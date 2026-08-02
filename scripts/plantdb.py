@@ -802,7 +802,35 @@ def cmd_unverified(args):
     print("  python3 scripts/plantdb.py confirm --file <name> --by \"Your Name\" --status confirmed")
 
 
+def require(module, pip_name):
+    """Import a third-party module, re-running under .venv if that is where it lives.
+
+    Most of this tool is stdlib-only and runs fine under system python, so the docs
+    say `python3 scripts/plantdb.py` everywhere. Two commands need packages that are
+    only in .venv, and the difference is invisible until it fails. Rather than make
+    every command carry a venv prefix it does not need, re-exec the ones that do.
+    """
+    import importlib
+    try:
+        return importlib.import_module(module)
+    except ImportError:
+        pass
+    venv = ROOT / ".venv" / "bin" / "python"
+    # Compare interpreter *prefixes*, never resolved paths: .venv/bin/python is a
+    # symlink to the base interpreter, so resolving both sides makes an outside
+    # python look like it is already inside the venv. The venv also only works when
+    # invoked through the symlink — resolving the path away loses its site-packages.
+    in_venv = pathlib.Path(sys.prefix) == (ROOT / ".venv")
+    if venv.exists() and not in_venv:
+        have = subprocess.run([str(venv), "-c", f"import {module}"], capture_output=True)
+        if have.returncode == 0:
+            os.execv(str(venv), [str(venv)] + sys.argv)   # replaces this process
+    sys.exit(f"This command needs the '{pip_name}' package. Install it with:\n"
+             f"  .venv/bin/pip install {pip_name}")
+
+
 def _sheets():
+    require("googleapiclient", "google-api-python-client google-auth")
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
     import sheets
     cfg = sheets.config()
@@ -969,6 +997,20 @@ def cmd_doctor(args):
 
     check(bool(cfg.get("notice")) is False, "No proof-of-concept notice (real data)",
           "Proof-of-concept notice still shown — remove `notice` from publish-config.json when real data lands")
+
+    if venv.exists():
+        ok_g = subprocess.run([str(venv), "-c", "import googleapiclient"],
+                              capture_output=True).returncode == 0
+        check(ok_g, "Google Sheets client installed",
+              "Sheets client missing — .venv/bin/pip install google-api-python-client google-auth")
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+    try:
+        import sheets as _sh
+        check(bool(_sh.config()), "Google Sheet configured",
+              "Google Sheet not configured (" + ", ".join(_sh.missing_vars())
+              + ") — optional; enables steward review")
+    except ImportError:
+        pass
 
     plist = pathlib.Path.home() / "Library/LaunchAgents/com.mueller.searsisland.plist"
     check(plist.exists(), "Watcher installed",

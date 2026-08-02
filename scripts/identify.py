@@ -146,7 +146,7 @@ def save(p, o):
 # Reuse plantdb's split so an identification written here lands back in the file
 # the record came from — a local-only photo must never be promoted into git.
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-from plantdb import load_obs, save_obs, thumb_path  # noqa: E402
+from plantdb import load_obs, save_obs, thumb_path, require  # noqa: E402
 import idcache  # noqa: E402
 
 
@@ -409,11 +409,7 @@ def main():
                     help=f"where these photos were taken, e.g. 'the Pacific Northwest' (default: {DEFAULT_REGION})")
     args = ap.parse_args()
 
-    try:
-        import anthropic
-    except ImportError:
-        sys.exit("The anthropic SDK isn't installed. Run:\n  .venv/bin/pip install anthropic\n"
-                 "and call this script as  .venv/bin/python scripts/identify.py")
+    anthropic = require("anthropic", "anthropic")
 
     if not (os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN")):
         sys.exit("No API key found. Get one at https://console.anthropic.com/settings/keys then:\n"

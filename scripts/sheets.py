@@ -79,12 +79,20 @@ def _col(i):
     return s
 
 
-def sheet_id_of(svc, cfg):
-    """Numeric id of our tab, creating the tab if it isn't there yet."""
+def tab_id(svc, cfg):
+    """Numeric id of our tab, or None if it does not exist yet."""
     meta = svc.spreadsheets().get(spreadsheetId=cfg["sheet_id"]).execute()
     for sh in meta["sheets"]:
         if sh["properties"]["title"] == SHEET_NAME:
             return sh["properties"]["sheetId"]
+    return None
+
+
+def sheet_id_of(svc, cfg):
+    """Numeric id of our tab, creating the tab if it isn't there yet."""
+    existing = tab_id(svc, cfg)
+    if existing is not None:
+        return existing
     res = svc.spreadsheets().batchUpdate(
         spreadsheetId=cfg["sheet_id"],
         body={"requests": [{"addSheet": {"properties": {"title": SHEET_NAME}}}]}).execute()
@@ -108,9 +116,21 @@ def row_for(o, species, image_base):
     ]
 
 
+def _has_protection(svc, cfg):
+    """Is our warning-protection already on the tab? addProtectedRange is additive,
+    so without this every push would stack another identical range."""
+    meta = svc.spreadsheets().get(spreadsheetId=cfg["sheet_id"]).execute()
+    for sh in meta["sheets"]:
+        if sh["properties"]["title"] == SHEET_NAME:
+            return any(r.get("description", "").startswith("Written by the pipeline")
+                       for r in sh.get("protectedRanges", []))
+    return False
+
+
 def push(svc, cfg, obs, species, image_base, verified_by_file):
     """Write machine columns. Human columns are read first and written back untouched."""
     tab = sheet_id_of(svc, cfg)
+    protected = _has_protection(svc, cfg)
     rows = []
     for o in obs:
         machine = row_for(o, species, image_base)
@@ -128,7 +148,7 @@ def push(svc, cfg, obs, species, image_base, verified_by_file):
         body={"values": [HEADERS] + rows}).execute()
 
     n = len(rows) + 1
-    svc.spreadsheets().batchUpdate(spreadsheetId=cfg["sheet_id"], body={"requests": [
+    requests = [
         # Freeze the header, and the file column so a wide sheet stays readable.
         {"updateSheetProperties": {
             "properties": {"sheetId": tab, "gridProperties":
@@ -152,18 +172,31 @@ def push(svc, cfg, obs, species, image_base, verified_by_file):
             "rule": {"condition": {"type": "ONE_OF_LIST",
                                    "values": [{"userEnteredValue": s} for s in STATUSES]},
                      "showCustomUi": True, "strict": False}}},
+    ]
+    if not protected:
         # Warn (don't block) on edits to pipeline columns — they are overwritten on
         # the next push, so an edit there is silently lost work.
-        {"addProtectedRange": {"protectedRange": {
+        requests.append({"addProtectedRange": {"protectedRange": {
             "range": {"sheetId": tab, "startColumnIndex": 0, "endColumnIndex": FIRST_HUMAN},
             "description": "Written by the pipeline — edits here are overwritten on the next push.",
-            "warningOnly": True}}},
-    ]})
+            "warningOnly": True}}})
+    # .execute() is what actually sends it; a googleapiclient request object is lazy
+    # and silently does nothing without it.
+    svc.spreadsheets().batchUpdate(
+        spreadsheetId=cfg["sheet_id"], body={"requests": requests}).execute()
     return len(rows)
 
 
 def pull(svc, cfg):
-    """Read the human columns back. Returns {file: {status, species_id, by, date, notes}}."""
+    """Read the human columns back. Returns {file: {status, species_id, by, date, notes}}.
+
+    An absent tab means nothing has been pushed yet — that is empty, not an error.
+    Checked explicitly rather than by catching HttpError, so a real failure (bad id,
+    sheet not shared with the service account) still surfaces instead of looking
+    like an empty sheet.
+    """
+    if tab_id(svc, cfg) is None:
+        return {}
     last = _col(len(HEADERS) - 1)
     res = svc.spreadsheets().values().get(
         spreadsheetId=cfg["sheet_id"], range=f"{SHEET_NAME}!A2:{last}").execute()
