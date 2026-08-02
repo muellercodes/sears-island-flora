@@ -86,6 +86,63 @@ outright without ever colliding with the pipeline, because no field has two writ
 Unverified records are marked as such everywhere they appear, and their map pins are
 drawn with an open, dashed ring — the ring is the claim, and it is not closed yet.
 
+## Steward review in a Google Sheet
+
+Field verification does not need a developer. A shared sheet gives the Friends of
+Sears Island a place to confirm, correct, and annotate records with the photo right
+there in the row.
+
+**This is not a general two-way sync, deliberately.** Every column has exactly one
+writer:
+
+| Columns | Owner | Direction |
+|---|---|---|
+| file, photo, photographed, latitude, longitude, AI identification, AI confidence, AI notes | pipeline | push → sheet |
+| STATUS, corrected species, verified by, verified date, field notes | **a person** | sheet → pull |
+
+No field has two writers, so there is no merge and nothing to resolve. A steward can
+be editing while a batch run identifies new photos, and neither clobbers the other.
+Push reads the human columns and writes them straight back untouched, so it can
+never blank someone's work.
+
+### One-time setup
+
+1. **Create a Google Cloud project** — <https://console.cloud.google.com/projectcreate>.
+   Any name; it exists only to hold the credential.
+2. **Enable the Sheets API** for that project —
+   <https://console.cloud.google.com/apis/library/sheets.googleapis.com> → *Enable*.
+3. **Create a service account** — *IAM & Admin → Service Accounts → Create*. No roles
+   are needed; access comes from sharing the sheet, not from project roles.
+4. **Make a JSON key** — open the service account → *Keys → Add key → Create new key
+   → JSON*. It downloads once. Store it outside the repo.
+5. **Create the sheet**, then **share it with the service account's email**
+   (`something@your-project.iam.gserviceaccount.com`) as **Editor**. This step is what
+   grants access — without it every call returns 404, which looks like a wrong id.
+6. **Add both values to `.env`:**
+
+   ```bash
+   GOOGLE_SERVICE_ACCOUNT_JSON=/Users/you/.config/sears-island/service-account.json
+   GOOGLE_SHEET_ID=<the long id from the sheet URL, between /d/ and /edit>
+   ```
+
+### Day to day
+
+```bash
+python3 scripts/plantdb.py sheet-push        # publish records for review
+python3 scripts/plantdb.py sheet-pull        # preview what stewards changed
+python3 scripts/plantdb.py sheet-pull --yes  # apply it
+```
+
+`sheet-push` creates the tab, freezes the header, adds a dropdown on STATUS, sets the
+row height so thumbnails are readable, and marks the pipeline columns
+warning-protected — they are overwritten on the next push, so an edit there is
+silently lost work.
+
+`sheet-pull` refuses anything it cannot trust and says why: an unknown status, a
+`corrected` row with no species, an unknown species id, a row for a record that does
+not exist, or — importantly — a verification with nobody's name against it. An
+unattributed verification is not a verification.
+
 ## Screening
 
 Contributor photos are screened before entering the survey. The check is an

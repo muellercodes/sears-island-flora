@@ -802,6 +802,100 @@ def cmd_unverified(args):
     print("  python3 scripts/plantdb.py confirm --file <name> --by \"Your Name\" --status confirmed")
 
 
+def _sheets():
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+    import sheets
+    cfg = sheets.config()
+    if not cfg:
+        sys.exit("Google Sheet not configured. Missing: " + ", ".join(sheets.missing_vars())
+                 + "\nSee 'Steward review in a Google Sheet' in the README.")
+    return sheets, cfg
+
+
+def cmd_sheet_push(args):
+    """Send the machine columns to the sheet. Never touches the human columns."""
+    sheets, cfg = _sheets()
+    svc = sheets.service(cfg)
+    obs = load_obs()
+    species = {s["id"]: s for s in enriched_species()}
+    base = (load(PUBCFG_F, {}).get("r2_public_base") or "").rstrip("/")
+    if base:
+        base += "/" + (load(PUBCFG_F, {}).get("r2_prefix") or "thumbs")
+    # Read the human columns first and write them straight back, so a push can never
+    # blank a steward's work — even one made between this read and the write.
+    existing = sheets.pull(svc, cfg)
+    n = sheets.push(svc, cfg, obs, species, base, existing)
+    print(f"Pushed {n} record(s) to the sheet.")
+    print(f"  https://docs.google.com/spreadsheets/d/{cfg['sheet_id']}/edit")
+    if not base:
+        print("  (no r2_public_base set — the photo column will be empty)")
+
+
+def cmd_sheet_pull(args):
+    """Read steward verifications back. Previews by default; --yes to apply."""
+    sheets, cfg = _sheets()
+    svc = sheets.service(cfg)
+    rows = sheets.pull(svc, cfg)
+    obs = load_obs()
+    by_file = {o["file"]: o for o in obs}
+    ids = {s["id"] for s in load(SPECIES_F, [])}
+
+    changes, problems = [], []
+    for f, v in rows.items():
+        o = by_file.get(f)
+        if o is None:
+            problems.append(f"{f}: no such record (row ignored)")
+            continue
+        cur = o.get("verified") or {}
+        if not v["status"]:
+            if cur:
+                changes.append((o, None, f"clear verification (was {cur.get('status')})"))
+            continue
+        if v["status"] not in VERIFY_STATUS:
+            problems.append(f"{f}: status '{v['status']}' is not one of {', '.join(VERIFY_STATUS)}")
+            continue
+        if v["status"] == "corrected" and not v["species_id"]:
+            problems.append(f"{f}: 'corrected' needs a corrected species id")
+            continue
+        if v["species_id"] and v["species_id"] not in ids:
+            problems.append(f"{f}: unknown species id '{v['species_id']}'")
+            continue
+        if not v["by"]:
+            problems.append(f"{f}: needs a name in 'verified by' — an unattributed "
+                            f"verification is not a verification")
+            continue
+        new = {"status": v["status"], "by": v["by"],
+               "date": v["date"] or datetime.date.today().isoformat()}
+        if v["species_id"]:
+            new["species_id"] = v["species_id"]
+        if v["notes"]:
+            new["notes"] = v["notes"]
+        if new != cur:
+            changes.append((o, new, f"{cur.get('status', '—')} -> {v['status']} by {v['by']}"))
+
+    for p in problems:
+        print(f"  ! {p}")
+    if not changes:
+        print("No verification changes in the sheet." if not problems else "\nNo applicable changes.")
+        return
+    print(f"\n{len(changes)} change(s) from the sheet:")
+    for o, new, desc in changes[:20]:
+        print(f"  {o['file'][:14]}…  {desc}")
+    if len(changes) > 20:
+        print(f"  ... and {len(changes) - 20} more")
+    if not args.yes:
+        print("\nNothing changed. Re-run with --yes to apply.")
+        return
+    for o, new, _ in changes:
+        if new is None:
+            o.pop("verified", None)
+        else:
+            o["verified"] = new
+    save_obs(obs)
+    cmd_build(args)
+    print(f"\nApplied {len(changes)} verification change(s).")
+
+
 def cmd_cache(args):
     """What we have already paid to identify, and what it cost."""
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
@@ -1069,6 +1163,11 @@ if __name__ == "__main__":
     uv.add_argument("--status", help="only this regulatory status (e.g. regulated)")
     uv.add_argument("--limit", type=int)
     uv.set_defaults(func=cmd_unverified)
+    sp_ = sub.add_parser("sheet-push", help="send records to the steward review sheet")
+    sp_.set_defaults(func=cmd_sheet_push)
+    pl = sub.add_parser("sheet-pull", help="read steward verifications back from the sheet")
+    pl.add_argument("--yes", action="store_true", help="apply (otherwise just previews)")
+    pl.set_defaults(func=cmd_sheet_pull)
     sub.add_parser("cache", help="what we've already paid to identify, and what it cost").set_defaults(func=cmd_cache)
     sub.add_parser("doctor", help="report what is configured and what still blocks a run").set_defaults(func=cmd_doctor)
     rm = sub.add_parser("remove", help="delete records, their thumbnails and their R2 objects")
