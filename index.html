@@ -232,6 +232,16 @@
     font-weight:600; cursor:pointer; }
   .pop .pb button:hover { border-color:var(--accent); }
   .map-note { color:var(--muted); font-size:12.5px; margin:10px 2px 0; }
+
+  .vtag { display:inline-flex; align-items:center; gap:4px; font-size:10.5px; font-weight:700;
+    letter-spacing:.03em; text-transform:uppercase; padding:2px 7px; border-radius:999px;
+    border:1px solid currentColor; white-space:nowrap; }
+  .v-ok  { color:var(--edible); }
+  .v-no  { color:var(--toxic); }
+  .v-tbd { color:var(--caution); }
+  .v-none{ color:var(--muted); opacity:.85; }
+  /* An unverified pin is drawn open — the ring is the claim, and it isn't closed yet. */
+  .mk.unver { border-style:dashed; opacity:.92; }
   footer { color:var(--muted); font-size:12.5px; margin-top:44px;
     border-top:1px solid var(--line); padding-top:16px; }
   footer p { margin:0; }
@@ -309,8 +319,9 @@ const SP = Object.fromEntries(DB.species.map(s => [s.id, s]));
 const OBS = DB.observations;
 const byS = {};       // photos where this species is the main subject
 const alsoS = {};     // photos where it's visible but not the subject — still a real record of it growing there
+const spOf = o => o.effective_species_id || o.species_id;   // human verdict wins
 OBS.forEach(o => {
-  (byS[o.species_id] ||= []).push(o);
+  (byS[spOf(o)] ||= []).push(o);
   (o.also || []).forEach(id => (alsoS[id] ||= []).push(o));
 });
 
@@ -340,6 +351,22 @@ const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;
 // The build writes an explicit thumb path, because local-only records live in a
 // separate untracked directory. Older records without one fall back to thumbs/.
 const thumbSrc = o => o.thumb || `thumbs/${o.file}`;
+// The project's central claim is that nothing counts until a person has checked it,
+// so verification state is shown wherever a record appears — never inferred, never
+// implied by confidence (a high-confidence machine guess is still a guess).
+const VSTATE = {
+  confirmed: {label: "Field-verified", cls: "v-ok",   dot: "✓"},
+  corrected: {label: "Corrected in field", cls: "v-ok", dot: "✓"},
+  rejected:  {label: "Rejected in field", cls: "v-no", dot: "✕"},
+  revisit:   {label: "Needs another look", cls: "v-tbd", dot: "?"},
+};
+const vOf = o => VSTATE[(o.verified || {}).status] || null;
+function vBadge(o) {
+  const v = vOf(o), d = o.verified || {};
+  if (!v) return `<span class="vtag v-none" title="No one has checked this on the ground">unverified</span>`;
+  const who = [d.by, d.date].filter(Boolean).join(", ");
+  return `<span class="vtag ${v.cls}" title="${esc(who)}">${v.dot} ${esc(v.label)}</span>`;
+}
 // `taken` is the EXIF capture time; `identified` is when the ID was last written,
 // and is absent on records that predate that being recorded — show nothing rather
 // than guess a date for them.
@@ -437,6 +464,7 @@ function cardHTML(s) {
           : also.length ? `seen in ${also.length} photo${also.length === 1 ? "" : "s"}` : "no photo"}</span>
       </div>
       ${dateSpan([...shots, ...also]) ? `<div class="when">${esc(dateSpan([...shots, ...also]))}</div>` : ""}
+      ${shots.length ? `<div class="when">${shots.filter(x => x.is_verified).length}/${shots.length} field-verified</div>` : ""}
       ${uses ? `<div class="uses">${esc(uses)}</div>` : ""}
     </div></button>`;
 }
@@ -585,7 +613,7 @@ function drawMarkers() {
       .sort((a, b) => ORDER.indexOf(a) - ORDER.indexOf(b))[0];
     const icon = L.divIcon({
       className: "", iconSize: [44, 44], iconAnchor: [22, 22], popupAnchor: [0, -20],
-      html: `<div class="mk-wrap"><div class="mk s-${worst}">`
+      html: `<div class="mk-wrap"><div class="mk s-${worst}${g.items.some(x => !x.is_verified) ? " unver" : ""}">`
           + `<img src="${esc(thumbSrc(o))}" alt="${esc(s.common)}" loading="lazy">`
           + `</div>${g.items.length > 1 ? `<span class="cnt">${g.items.length}</span>` : ""}</div>`,
     });
@@ -621,6 +649,7 @@ function listHTML(gid, items) {
         <span class="rm"><span class="dot d-${statusOf(s)}"></span>${esc(badgeOf(s).label)}
           · <span class="conf-${o.confidence}">${esc(o.confidence)}</span></span>
         <span class="rm">${esc(day(o))}${o.identified ? ` · ID'd ${esc(o.identified)}` : ""}</span>
+        <span class="rm">${vBadge(o)}</span>
       </span></button>`;
   }).join("");
   return `<div class="pop">
@@ -643,9 +672,12 @@ function detailHTML(gid, idx) {
       <div class="ps">${esc(s.scientific)}</div>
       <div class="pm"><span class="badge ${badgeOf(s).cls}">${badgeOf(s).label}</span>
         · <span class="conf-${o.confidence}">${esc(o.confidence)}</span></div>
+      <div class="pm">${vBadge(o)}</div>
       <div class="pm">${esc(day(o))} · ${esc(o.lat)}, ${esc(o.lon)}</div>
       ${o.identified ? `<div class="pm">Identified ${esc(o.identified)}</div>` : ""}
-      ${o.note ? `<div class="pm">${esc(o.note)}</div>` : ""}
+      ${(o.verified || {}).notes
+          ? `<div class="pm"><b>In the field:</b> ${esc(o.verified.notes)}</div>`
+          : (o.note ? `<div class="pm">${esc(o.note)}</div>` : "")}
       <button data-id="${esc(o.species_id)}" onclick="openSheet(this.dataset.id)">Full details</button>
     </div></div>`;
 }
@@ -674,6 +706,9 @@ function shotGrid(list, s, secondary = false) {
         ${esc(o.note || "")}
         <div style="margin-top:6px;opacity:.75">${esc((o.taken || "").slice(0, 16))}${o.lat ? ` · ${esc(o.lat)}, ${esc(o.lon)}` : ""}</div>
         ${o.identified ? `<div style="margin-top:3px;opacity:.6">Identified ${esc(o.identified)}</div>` : ""}
+        <div style="margin-top:6px">${vBadge(o)}</div>
+        ${(o.verified || {}).notes
+            ? `<div style="margin-top:4px;opacity:.85"><b>In the field:</b> ${esc(o.verified.notes)}</div>` : ""}
       </figcaption>
     </figure>`;
   }).join("")}</div>`;

@@ -74,6 +74,29 @@ def save_obs(obs):
         save(LOCAL_OBS_F, loc)
 
 
+# A record carries two identifications: what the model said, and what a person
+# confirmed on the ground. They are kept in separate fields on purpose — the
+# pipeline owns species_id, a human owns everything under `verified`, and neither
+# overwrites the other. That is what makes a two-way sync with an outside editor
+# (a shared spreadsheet, say) conflict-free later: every field has one writer.
+VERIFY_STATUS = ("confirmed", "corrected", "rejected", "revisit")
+
+
+def effective_species(o):
+    """The species to believe: a human correction if there is one, else the model's."""
+    v = o.get("verified") or {}
+    if v.get("status") == "corrected" and v.get("species_id"):
+        return v["species_id"]
+    if v.get("status") == "rejected":
+        return "unknown"
+    return o.get("species_id", "unknown")
+
+
+def is_verified(o):
+    """True when a person has actually been to the spot and recorded a verdict."""
+    return (o.get("verified") or {}).get("status") in VERIFY_STATUS
+
+
 def thumb_dir(o):
     return THUMBS_LOCAL if o.get("local_only") else THUMBS
 
@@ -379,6 +402,11 @@ def cmd_build(args):
         if o["species_id"] not in ids:
             print(f"  ! {o['file']} references unknown species '{o['species_id']}' — falling back to 'unknown'")
             o["species_id"] = "unknown"
+        # The app groups by what we currently believe, which is the human's verdict
+        # where there is one. `species_id` stays as the model's original answer so
+        # the site can show both — "AI said X, confirmed as Y".
+        o["effective_species_id"] = effective_species(o)
+        o["is_verified"] = is_verified(o)
     # Tell the app where each thumbnail actually lives, so it doesn't have to know
     # the tracked/local split. publish() overwrites this with the published layout.
     for o in obs:
@@ -408,7 +436,7 @@ def cmd_invasives(args):
     # A species is "seen" in a photo if it is the subject or merely visible in it.
     sightings = {}
     for o in obs:
-        for sid in [o["species_id"]] + o.get("also", []):
+        for sid in [effective_species(o)] + o.get("also", []):
             sightings.setdefault(sid, []).append(o)
 
     rows = []
@@ -436,14 +464,21 @@ def cmd_invasives(args):
             print(f"    {note}")
         for o in shots:
             where = f"{o['lat']}, {o['lon']}" if o.get("lat") else "no location"
-            sec = " [background]" if o["species_id"] != sid else ""
-            print(f"      {o.get('taken','')[:16]}  {where}  {o['file'][:8]}…{sec}")
+            sec = " [background]" if effective_species(o) != sid else ""
+            v = o.get("verified") or {}
+            mark = f"  ✓ {v['status']} by {v.get('by','?')} {v.get('date','')}" if is_verified(o) \
+                   else "  · UNVERIFIED"
+            print(f"      {o.get('taken','')[:16]}  {where}  {o['file'][:8]}…{sec}{mark}")
         print()
 
     counts = {}
     for _, st, _, _, _ in rows:
         counts[st] = counts.get(st, 0) + 1
     print("Summary: " + ", ".join(f"{v} {k}" for k, v in sorted(counts.items(), key=lambda x: RANK.get(x[0], 9))))
+    nv = sum(1 for _, _, _, shots, _ in rows for o in shots if not is_verified(o))
+    if nv:
+        print(f"\n{nv} of these sightings have NOT been checked by a person. "
+              f"See: plantdb.py unverified")
     reg = [r for r in rows if r[1] == "regulated"]
     if reg:
         print(f"\n{len(reg)} regulated species found. These are the reportable ones —")
@@ -698,6 +733,73 @@ def cmd_refresh_gps(args):
     still = sum(1 for o in load_obs() if not o.get("lat"))
     if still:
         print(f"{still} record(s) still have no location — their originals carry no GPS.")
+
+
+def cmd_confirm(args):
+    """Record that a person checked a record in the field.
+
+    This is the step the whole project turns on — until it happens a record is a
+    lead, not a finding. Deliberately one record at a time and never inferred:
+    nothing else in the pipeline may write these fields.
+    """
+    obs = load_obs()
+    want = set(args.file or [])
+    sel = [o for o in obs if o["file"] in want or o["id"] in want]
+    missing = want - {o["file"] for o in sel} - {o["id"] for o in sel}
+    if missing:
+        sys.exit(f"No record matches: {', '.join(sorted(missing))}")
+    if not sel:
+        sys.exit("Pass --file with one or more filenames or record ids.")
+
+    if args.status == "corrected" and not args.species:
+        sys.exit("--status corrected needs --species <id> (what it actually is).")
+    ids = {s["id"] for s in load(SPECIES_F, [])}
+    if args.species and args.species not in ids:
+        sys.exit(f"Unknown species id '{args.species}'. See: plantdb.py species")
+
+    for o in sel:
+        v = {"status": args.status, "by": args.by,
+             "date": args.date or datetime.date.today().isoformat()}
+        if args.species:
+            v["species_id"] = args.species
+        if args.notes:
+            v["notes"] = args.notes
+        o["verified"] = v
+        was = o.get("species_id", "unknown")
+        now = effective_species(o)
+        change = f"  {was} -> {now}" if now != was else ""
+        print(f"  {o['file'][:14]}…  {args.status} by {args.by}{change}")
+    save_obs(obs)
+    cmd_build(args)
+    print(f"\nRecorded {len(sel)} field verification(s).")
+
+
+def cmd_unverified(args):
+    """What still needs a person to go and look, most urgent first."""
+    obs = [o for o in load_obs() if not is_verified(o)]
+    species = {s["id"]: s for s in enriched_species()}
+    rows = []
+    for o in obs:
+        sp = species.get(effective_species(o), {})
+        rows.append((RANK.get(sp.get("origin_status", "unknown"), 9), o, sp))
+    rows.sort(key=lambda r: (r[0], r[1].get("taken", "")))
+    if args.status:
+        rows = [r for r in rows if r[2].get("origin_status") == args.status]
+    if not rows:
+        print("Everything is field-verified.")
+        return
+    print(f"{len(rows)} record(s) awaiting field verification:\n")
+    cur = None
+    for rank, o, sp in rows[: args.limit or len(rows)]:
+        st = sp.get("origin_status", "unknown")
+        if st != cur:
+            cur = st
+            print(f"\n=== {st.upper()} ===")
+        print(f"  {o['file']}")
+        print(f"    {sp.get('common', o.get('species_id'))}  [{o.get('confidence','?')}]"
+              f"  {o.get('lat','')}, {o.get('lon','')}")
+    print("\nTo record a check:")
+    print("  python3 scripts/plantdb.py confirm --file <name> --by \"Your Name\" --status confirmed")
 
 
 def cmd_cache(args):
@@ -955,6 +1057,18 @@ if __name__ == "__main__":
                         "use for test photos or anywhere outside the survey area")
     i.set_defaults(func=cmd_ingest)
     sub.add_parser("build", help="regenerate app/data.js").set_defaults(func=cmd_build)
+    cf = sub.add_parser("confirm", help="record that a person verified a record in the field")
+    cf.add_argument("--file", nargs="+", required=True, help="filename(s) or record id(s)")
+    cf.add_argument("--by", required=True, help="who checked it — a name, not an initial")
+    cf.add_argument("--status", required=True, choices=VERIFY_STATUS)
+    cf.add_argument("--species", help="the correct species id (required with --status corrected)")
+    cf.add_argument("--date", help="date of the check (defaults to today)")
+    cf.add_argument("--notes", help="what they saw")
+    cf.set_defaults(func=cmd_confirm)
+    uv = sub.add_parser("unverified", help="what still needs a person to go and look")
+    uv.add_argument("--status", help="only this regulatory status (e.g. regulated)")
+    uv.add_argument("--limit", type=int)
+    uv.set_defaults(func=cmd_unverified)
     sub.add_parser("cache", help="what we've already paid to identify, and what it cost").set_defaults(func=cmd_cache)
     sub.add_parser("doctor", help="report what is configured and what still blocks a run").set_defaults(func=cmd_doctor)
     rm = sub.add_parser("remove", help="delete records, their thumbnails and their R2 objects")

@@ -53,6 +53,39 @@ stake in the answer.
   both native and introduced species. On the seed catalogue that's 10 of 41 — an honest
   number, and each one is a "go back and look" task.
 
+## Field verification
+
+The premise of this survey is that a machine identification is a lead, not a finding.
+That only means anything if the confirmation is recorded, so it is a first-class field:
+
+```bash
+# a person went and looked, and the AI was right
+python3 scripts/plantdb.py confirm --file IMG_1234.jpg --by "J. Whitten" \
+    --status confirmed --notes "Two mature shrubs, hollow pith."
+
+# a person went and looked, and it is something else
+python3 scripts/plantdb.py confirm --file IMG_1234.jpg --by "J. Whitten" \
+    --status corrected --species dogbane --notes "Opposite leaves, milky sap."
+
+# what still needs checking, most urgent first
+python3 scripts/plantdb.py unverified --status regulated
+```
+
+`--status` is one of `confirmed`, `corrected`, `rejected`, `revisit`.
+
+**The model's answer and the human's answer are stored separately and never
+overwrite each other.** `species_id` stays whatever the pipeline decided;
+everything under `verified` is written only by `confirm`. The site groups records
+by what is currently believed — the human verdict where there is one — while still
+showing what the model originally said.
+
+That separation is deliberate beyond tidiness: it means an outside editor (a shared
+spreadsheet for the Friends of Sears Island, say) can own the verification columns
+outright without ever colliding with the pipeline, because no field has two writers.
+
+Unverified records are marked as such everywhere they appear, and their map pins are
+drawn with an open, dashed ring — the ring is the claim, and it is not closed yet.
+
 ## Screening
 
 Contributor photos are screened before entering the survey. The check is an
