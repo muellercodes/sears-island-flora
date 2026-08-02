@@ -339,6 +339,9 @@ def cmd_build(args):
     DATA_JS.parent.mkdir(parents=True, exist_ok=True)
     payload = {"species": species, "observations": obs,
                "generated": datetime.datetime.now().strftime("%Y-%m-%d %H:%M")}
+    notice = load(PUBCFG_F, {}).get("notice")
+    if notice:
+        payload["notice"] = notice
     DATA_JS.write_text("window.PLANT_DB = " + json.dumps(payload, indent=1) + ";\n")
     n_local = sum(1 for o in obs if o.get("local_only"))
     extra = f" ({n_local} local-only, never published)" if n_local else ""
@@ -497,6 +500,8 @@ def cmd_publish(args):
         o["thumb"] = f"{base}/{prefix}/{o['file']}" if base else f"thumbs/{o['file']}"
     payload = {"species": enriched_species(), "observations": kept,
                "generated": datetime.datetime.now().strftime("%Y-%m-%d %H:%M")}
+    if cfg.get("notice"):
+        payload["notice"] = cfg["notice"]
     (pub / "app" / "data.js").write_text("window.PLANT_DB = " + json.dumps(payload, indent=1) + ";\n")
 
     n = 0
@@ -620,6 +625,67 @@ def cmd_refresh_gps(args):
         print(f"{still} record(s) still have no location — their originals carry no GPS.")
 
 
+def cmd_remove(args):
+    """Delete records entirely — from the data, from git, and from R2.
+
+    For retiring stand-in data once real survey photos replace it. Deleting the
+    records alone would strand their images on R2 forever, so this removes the
+    objects too. Previews by default; needs --yes.
+    """
+    obs = load_obs()
+    sel = [o for o in obs if (not args.batch or o.get("batch") == args.batch)
+           and (not args.file or o["file"] in set(args.file))]
+    if not (args.batch or args.file):
+        sys.exit("Refusing to remove everything — pass --batch or --file.")
+    if not sel:
+        print("Nothing matches.")
+        return
+
+    pub = sum(1 for o in sel if not o.get("local_only"))
+    print(f"{len(sel)} record(s) would be deleted ({pub} of them published).")
+    for o in sel[:8]:
+        print(f"  {o['file'][:12]}…  {o.get('species_id','?'):26} {o.get('batch','')}")
+    if len(sel) > 8:
+        print(f"  ... and {len(sel) - 8} more")
+    print("\nThis removes the records, their thumbnails, and their R2 objects.")
+    print("Originals in photos/ are NOT touched — re-ingest to bring them back.")
+    if not args.yes:
+        print("\nNothing changed. Re-run with --yes to delete.")
+        return
+
+    cfg_pub = load(PUBCFG_F, {})
+    prefix = (cfg_pub.get("r2_prefix") or "thumbs").strip("/")
+    bucket = cfg_pub.get("r2_bucket", "")
+    manifest = load(R2_MANIFEST, {})
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+    import r2
+    creds = r2.config()
+
+    gone = 0
+    for o in sel:
+        if not o.get("local_only") and (creds or bucket):
+            key = f"{prefix}/{o['file']}"
+            try:
+                if creds:
+                    r2.delete(creds, key)
+                else:
+                    subprocess.run(["npx", "wrangler", "r2", "object", "delete",
+                                    f"{bucket}/{key}", "--remote"],
+                                   capture_output=True, text=True, timeout=120)
+                gone += 1
+            except Exception as e:
+                print(f"  ! could not delete {key}: {e}")
+        manifest.pop(o["file"], None)
+        thumb_path(o).unlink(missing_ok=True)
+
+    drop = {o["file"] for o in sel}
+    save_obs([o for o in obs if o["file"] not in drop])
+    save(R2_MANIFEST, manifest)
+    cmd_build(args)
+    print(f"\nRemoved {len(sel)} record(s); {gone} object(s) deleted from R2.")
+    print("Run `publish` and push to update the site.")
+
+
 def cmd_promote(args):
     """Move local-only records into the published set.
 
@@ -727,6 +793,11 @@ if __name__ == "__main__":
                         "use for test photos or anywhere outside the survey area")
     i.set_defaults(func=cmd_ingest)
     sub.add_parser("build", help="regenerate app/data.js").set_defaults(func=cmd_build)
+    rm = sub.add_parser("remove", help="delete records, their thumbnails and their R2 objects")
+    rm.add_argument("--batch", help="every record from this batch")
+    rm.add_argument("--file", nargs="*", help="these specific filenames")
+    rm.add_argument("--yes", action="store_true", help="actually delete (otherwise just previews)")
+    rm.set_defaults(func=cmd_remove)
     pr = sub.add_parser("promote", help="move local-only records into the published set")
     pr.add_argument("--batch", help="only records from this batch")
     pr.add_argument("--file", nargs="*", help="only these specific filenames")

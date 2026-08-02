@@ -55,6 +55,12 @@
   .chip.c-med[aria-pressed=true]{color:var(--med)} .chip.c-inedible[aria-pressed=true]{color:var(--inedible)}
   .chip.c-toxic[aria-pressed=true]{color:var(--toxic)} .chip.c-unknown[aria-pressed=true]{color:var(--unknown)}
 
+  .notice { background:color-mix(in srgb, var(--caution) 12%, transparent);
+    border:1px solid var(--caution); border-radius:10px; padding:13px 16px;
+    margin:20px 0 0; font-size:14px; }
+  .notice h4 { margin:0 0 5px; color:var(--caution); font-size:12px; font-weight:700;
+    text-transform:uppercase; letter-spacing:.05em; }
+  .notice p { margin:0; color:var(--ink); }
   .safety { display:flex; gap:12px; align-items:flex-start; background:var(--panel);
     border:1px solid var(--line); border-left:4px solid var(--toxic);
     border-radius:10px; padding:13px 16px; margin:20px 0 4px; font-size:14px; box-shadow:var(--shadow); }
@@ -244,12 +250,14 @@
 </header>
 
 <main class="wrap">
+  <div id="notice"></div>
+
   <div class="safety">
     <span style="font-size:22px;line-height:1.05">🔬</span>
     <p><b>These identifications are AI-generated from volunteer photographs and have not been
        verified in the field.</b> Treat every record as a lead to go and check, not a finding.
-       Nothing here should be cited as evidence of a species' presence or absence on the island
-       until someone qualified has confirmed it on the ground and dated that confirmation.<br>
+       Nothing here should be cited as evidence of a species' presence or absence until someone
+       qualified has confirmed it on the ground and dated that confirmation.<br>
        Regulated-species records in particular need in-person verification against the current
        <a href="https://www.maine.gov/dacf/php/horticulture/invasiveplants.shtml">Maine DACF list</a>
        before being reported to anyone.</p>
@@ -705,6 +713,14 @@ $("lightbox").onclick = () => $("lightbox").close();
   $("hdr-sub").textContent = `${OBS.length} photos`
     + (batches.length === 1 ? ` · ${batches[0]}`
        : dates.length ? ` · ${dates[0]}${dates.at(-1) !== dates[0] ? "–" + dates.at(-1) : ""}` : "");
+  // Shown only while the published set is stand-in data. Removing `notice` from
+  // data/publish-config.json is what retires it — same scrub as the records.
+  const nt = DB.notice;
+  if (nt && nt.body) {
+    $("notice").className = "notice";
+    $("notice").innerHTML = `${nt.title ? `<h4>${esc(nt.title)}</h4>` : ""}<p>${esc(nt.body)}</p>`;
+  }
+
   // "Last updated" is the most recent identification if any record carries one,
   // otherwise the build time — never a guess.
   const ids = OBS.map(o => o.identified).filter(Boolean).sort();

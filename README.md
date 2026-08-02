@@ -213,6 +213,22 @@ Forked from a family foraging guide. Four inversions, each for a reason:
 Foraging notes are retained as secondary detail — they're accurate and occasionally
 useful — but they are not what this site is for.
 
+## Retiring the proof-of-concept data
+
+The published records are currently a stand-in batch photographed in Orono, not on
+Sears Island. The site says so in a banner driven by the `notice` field in
+`data/publish-config.json`.
+
+When real island photographs replace them:
+
+```bash
+python3 scripts/plantdb.py remove --batch orono --yes   # records, thumbnails, R2 objects
+```
+
+Then delete `notice` from `data/publish-config.json`, `publish`, and push. Deleting
+the records alone would strand their images on R2 indefinitely, which is why `remove`
+handles all three. Originals in `photos/` are left alone.
+
 ## Seed catalogue
 
 Ships with 41 species from the upstream project (an inland Maine roadside walk),

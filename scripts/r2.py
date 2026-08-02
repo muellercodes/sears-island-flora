@@ -109,6 +109,18 @@ def put(cfg, key, data, content_type="image/jpeg", retries=3):
     raise R2Error(f"{key}: giving up after {retries} attempts — {last}")
 
 
+def delete(cfg, key):
+    """Remove one object. A missing object is not an error — the goal is absence."""
+    req = signed_request(cfg, "DELETE", key)
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            return 200 <= r.status < 300
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return True
+        raise R2Error(f"{key}: HTTP {e.code} — {e.read()[:200].decode('utf-8', 'replace')}")
+
+
 def check(cfg):
     """Verify credentials work before a run uploads hundreds of objects."""
     key = ".plantdb-preflight"
