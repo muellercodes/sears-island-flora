@@ -1,0 +1,7 @@
+photos/
+.venv/
+public/
+.DS_Store
+logs/*.log
+.env
+data/rejected/

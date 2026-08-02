@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.mueller.searsisland</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>__ROOT__/scripts/autopilot.sh</string>
+    <string>__INBOX__</string>
+  </array>
+
+  <!-- Check every 15 minutes -->
+  <key>StartInterval</key>
+  <integer>900</integer>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>__ROOT__/logs/launchd.log</string>
+  <key>StandardErrorPath</key>
+  <string>__ROOT__/logs/launchd.log</string>
+
+  <key>WorkingDirectory</key>
+  <string>__ROOT__</string>
+</dict>
+</plist>

@@ -1,0 +1,787 @@
+[
+{
+  "id": "poison-ivy",
+  "common": "Poison Ivy",
+  "scientific": "Toxicodendron radicans",
+  "family": "Anacardiaceae",
+  "kind": "vine",
+  "edibility": "toxic",
+  "danger": true,
+  "summary": "Do not touch. All parts contain urushiol oil, which causes severe contact dermatitis in most people. Learn it first, before anything else on this list.",
+  "parts": [],
+  "id_marks": [
+    "Always exactly 3 leaflets; the middle leaflet has a noticeably longer stalk than the two side ones",
+    "Side leaflets are lopsided, usually with one coarse lobe or tooth on the outer edge only",
+    "Leaves alternate along the stem (never opposite pairs)",
+    "Glossy when new, often reddish new growth; grows as ground cover, shrub, or hairy climbing vine",
+    "White-ish waxy berries in late summer"
+  ],
+  "cautions": [
+    "Urushiol persists on tools, clothing, gloves and pet fur for months",
+    "NEVER burn it — inhaled smoke causes lung inflammation that can be life-threatening",
+    "Jewelweed, which often grows nearby, is the traditional field wash for exposure"
+  ],
+  "lookalikes": [
+    "Virginia creeper — 5 leaflets, harmless to touch",
+    "Box elder seedlings — 3 leaflets but OPPOSITE, not alternate",
+    "Raspberry/blackberry — 3-5 leaflets but with thorns and toothed all around"
+  ]
+},
+{
+  "id": "broadleaf-plantain",
+  "common": "Broadleaf Plantain",
+  "scientific": "Plantago major",
+  "family": "Plantaginaceae",
+  "kind": "herb",
+  "edibility": "edible",
+  "summary": "One of the most useful and reliably identifiable roadside plants. Edible greens plus the classic field poultice for bites, stings and scrapes.",
+  "parts": [
+    {"part": "Young leaves", "use": "Food", "season": "Spring–early summer", "prep": "Raw in salad when small and tender; older leaves get stringy — steam or add to soup. Strip the tough parallel veins."},
+    {"part": "Mature leaves", "use": "Medicinal", "season": "All season", "prep": "Chew or crush into a poultice for insect bites, stings, splinters and minor cuts — drawing/anti-itch action."},
+    {"part": "Seeds (on the spike)", "use": "Food", "season": "Late summer–fall", "prep": "Strip the spikes, dry. Grind into flour extender or use whole — same family as psyllium, so a mild bulk fiber."}
+  ],
+  "id_marks": [
+    "Broad oval leaves in a flat basal rosette, no stem",
+    "3–7 heavy parallel veins running the length of the leaf; snap a leaf and the veins pull out like strings",
+    "Rat-tail seed spike rising straight from the center"
+  ],
+  "cautions": ["Roadside plants absorb vehicle exhaust and road salt — harvest well back from pavement and away from sprayed lawns"],
+  "lookalikes": ["Narrowleaf plantain (P. lanceolata) — same uses, skinnier leaves"]
+},
+{
+  "id": "dandelion",
+  "common": "Dandelion",
+  "scientific": "Taraxacum officinale",
+  "family": "Asteraceae",
+  "kind": "herb",
+  "edibility": "edible",
+  "summary": "Entirely edible, every part, all season. There is no toxic lookalike that will hurt you in the dandelion group.",
+  "parts": [
+    {"part": "Leaves", "use": "Food", "season": "Best before flowering; again after frost", "prep": "Raw when young. Bitter once the plant flowers — boil in a change of water, or sauté with fat and acid."},
+    {"part": "Flowers", "use": "Food", "season": "Spring–fall", "prep": "Petals only (green base is bitter) into fritters, wine, or infused honey."},
+    {"part": "Root", "use": "Food / Medicinal", "season": "Fall or early spring", "prep": "Roast and grind for a coffee substitute. Traditional bitter digestive and liver tonic."},
+    {"part": "Unopened flower buds", "use": "Food", "season": "Early spring", "prep": "Pick from the crown, sauté in butter — taste is close to artichoke heart."}
+  ],
+  "id_marks": [
+    "Basal rosette only — leaves never grow up a stem",
+    "Backward-pointing triangular teeth ('lion's tooth') along the leaf",
+    "Single flower head per hollow, leafless stalk; milky sap when broken"
+  ],
+  "cautions": ["Avoid sprayed lawns and roadside verges"],
+  "lookalikes": ["Cat's ear and hawkweed — hairy leaves, branched stems; harmless but blander"]
+},
+{
+  "id": "red-clover",
+  "common": "Red Clover",
+  "scientific": "Trifolium pratense",
+  "family": "Fabaceae",
+  "kind": "herb",
+  "edibility": "edible",
+  "summary": "Edible flowers and leaves, best known as a sweet tea. Eat in moderation rather than in bulk.",
+  "parts": [
+    {"part": "Flower heads", "use": "Food / Tea", "season": "Jun–Sep", "prep": "Pick fresh pink heads (skip browning ones). Dry for tea, or pull individual florets into salad — they taste faintly of honey."},
+    {"part": "Young leaves", "use": "Food", "season": "Spring–summer", "prep": "Best cooked. Raw clover in quantity is hard to digest."}
+  ],
+  "id_marks": [
+    "Three leaflets, each with a pale V-shaped chevron",
+    "Dense round-to-oval pink-magenta flower head sitting right on a pair of leaves",
+    "Softly hairy stems"
+  ],
+  "cautions": [
+    "Contains phytoestrogens — those with hormone-sensitive conditions or on blood thinners should be cautious",
+    "Do not use moldy or brown/fermenting flower heads (coumarol / anticoagulant risk)"
+  ],
+  "lookalikes": ["White clover — also edible, same rules"]
+},
+{
+  "id": "white-clover",
+  "common": "White Clover",
+  "scientific": "Trifolium repens",
+  "family": "Fabaceae",
+  "kind": "herb",
+  "edibility": "edible",
+  "summary": "Edible in small amounts, cooked for preference. Everywhere underfoot.",
+  "parts": [
+    {"part": "Flower heads", "use": "Food / Tea", "season": "May–Sep", "prep": "Dried for tea, or dipped and fried. Sweet."},
+    {"part": "Leaves", "use": "Food", "season": "Spring–fall", "prep": "Boil or steam briefly; raw clover in quantity causes bloating."}
+  ],
+  "id_marks": ["Creeping stems that root as they go", "Three leaflets, usually with a pale watermark", "White-to-pinkish ball-shaped flower head on a bare stalk"],
+  "cautions": ["Eat modestly — not a bulk green"],
+  "lookalikes": ["Wood sorrel (Oxalis) — also 3 parts but heart-shaped leaflets and sour taste; edible but oxalic"]
+},
+{
+  "id": "yarrow",
+  "common": "Yarrow",
+  "scientific": "Achillea millefolium",
+  "family": "Asteraceae",
+  "kind": "herb",
+  "edibility": "edible-with-caution",
+  "summary": "Classic wound herb — 'nosebleed plant.' Culinary use is as a strong bitter herb, not a vegetable.",
+  "parts": [
+    {"part": "Leaves", "use": "Medicinal", "season": "All season", "prep": "Crushed as a styptic poultice to slow bleeding on minor cuts; also a bitter tea for colds/fever."},
+    {"part": "Leaves (tiny amounts)", "use": "Food", "season": "Spring", "prep": "Very pungent — use like a bitter herb, a pinch at a time, not as a green."}
+  ],
+  "id_marks": ["Feathery, finely dissected fern-like leaves — 'thousand leaf'", "Strong sweet-medicinal smell when crushed", "Flat-topped cluster of small white (sometimes pink) flowers"],
+  "cautions": [
+    "Do not use during pregnancy",
+    "Can cause photosensitivity and skin rash in sensitive people",
+    "Ragweed-family allergy sufferers may react"
+  ],
+  "lookalikes": ["Poison hemlock and water hemlock also have dissected leaves — but yarrow's leaves are feathery-fuzzy and aromatic; hemlocks are smooth, hairless and foul-smelling with purple-blotched stems. Never confuse these."]
+},
+{
+  "id": "queen-annes-lace",
+  "common": "Queen Anne's Lace / Wild Carrot",
+  "scientific": "Daucus carota",
+  "family": "Apiaceae",
+  "kind": "herb",
+  "edibility": "edible-with-caution",
+  "danger": true,
+  "summary": "Genuinely edible — it is the wild ancestor of the carrot — but it lives in the one plant family that can kill you outright. Only harvest if you can positively rule out poison hemlock and water hemlock, every single time.",
+  "parts": [
+    {"part": "First-year root", "use": "Food", "season": "Fall of year one / spring of year two", "prep": "Only from a plant with no flower stalk yet. Pale, woody-cored, strongly carrot-scented. Cook it."},
+    {"part": "Flower umbels", "use": "Food", "season": "Jul–Aug", "prep": "Battered and fried, or steeped into a delicate jelly/syrup."},
+    {"part": "Seeds", "use": "Food / Seasoning", "season": "Late summer–fall", "prep": "Dry and use as a spice — flavor much like caraway."}
+  ],
+  "id_marks": [
+    "Stems are HAIRY — 'the Queen has hairy legs.' This is the key test.",
+    "Flat white umbel with a ring of feathery, forked bracts beneath it",
+    "Usually a single tiny dark purple floret in the center of the umbel",
+    "Whole plant smells distinctly of carrot",
+    "Umbel curls up into a 'bird's nest' as it goes to seed"
+  ],
+  "cautions": [
+    "POISON HEMLOCK (Conium maculatum): hairless stems with purple/red blotches, musty smell — FATAL",
+    "WATER HEMLOCK (Cicuta maculata): the most toxic plant in North America, wet ground, chambered root — FATAL",
+    "WILD PARSNIP and giant hogweed sap cause severe burning blisters in sunlight",
+    "If the stem is smooth or blotched, walk away. No exceptions.",
+    "Avoid during pregnancy — seeds have a traditional contraceptive/abortifacient use"
+  ],
+  "lookalikes": ["Poison hemlock", "Water hemlock", "Wild parsnip", "Yarrow (harmless)"]
+},
+{
+  "id": "goldenrod",
+  "common": "Goldenrod",
+  "scientific": "Solidago cf. canadensis",
+  "family": "Asteraceae",
+  "kind": "herb",
+  "edibility": "edible",
+  "summary": "Pleasant anise-tinged tea herb. Note: it does NOT cause hay fever — its pollen is heavy and insect-carried. Ragweed, blooming at the same time, is the real culprit.",
+  "parts": [
+    {"part": "Flowers", "use": "Tea / Food", "season": "Aug–Sep", "prep": "Dry the flowering tops for tea. Fresh flowers make a golden infused honey or can be battered and fried."},
+    {"part": "Young leaves", "use": "Food", "season": "Spring", "prep": "Cooked as a potherb; mildly bitter."},
+    {"part": "Whole flowering top", "use": "Medicinal", "season": "Aug–Sep", "prep": "Traditional urinary/kidney tonic tea and an anti-inflammatory."},
+    {"part": "Flowers", "use": "Dye", "season": "Aug–Sep", "prep": "Yields a strong yellow-gold natural dye for wool."}
+  ],
+  "id_marks": ["Tall unbranched stem with alternate lance-shaped, toothed leaves", "Dense one-sided plume of tiny golden flowers at the top", "Leaves get smaller as they go up the stem"],
+  "cautions": ["Asteraceae-family allergy sufferers should test cautiously", "Do not confuse with ragweed growing alongside it"],
+  "lookalikes": ["Common ragweed — greenish spike-like flowers, deeply cut leaves; not useful as food"]
+},
+{
+  "id": "common-ragweed",
+  "common": "Common Ragweed",
+  "scientific": "Ambrosia artemisiifolia",
+  "family": "Asteraceae",
+  "kind": "herb",
+  "edibility": "inedible",
+  "summary": "The actual cause of late-summer hay fever. Not a forage plant — worth knowing purely so you can blame the right species and avoid it.",
+  "parts": [],
+  "id_marks": ["Deeply dissected, fern-like leaves, often opposite low on the plant", "Greenish, unshowy flower spikes at the tips — no petals", "Disturbed ground, gravel shoulders, field edges"],
+  "cautions": ["Major allergen — a single plant releases enormous quantities of wind-borne pollen", "Handling can irritate skin in sensitive people"],
+  "lookalikes": ["Mugwort", "Young yarrow — but yarrow's leaves are far finer and aromatic"]
+},
+{
+  "id": "jewelweed",
+  "common": "Jewelweed / Spotted Touch-me-not",
+  "scientific": "Impatiens capensis",
+  "family": "Balsaminaceae",
+  "kind": "herb",
+  "edibility": "edible-with-caution",
+  "summary": "The single most useful field remedy on this list — the standard wash for poison ivy exposure, and it conveniently grows in the same damp ground.",
+  "parts": [
+    {"part": "Stems and leaves", "use": "Medicinal", "season": "Jun–Sep", "prep": "Crush the succulent stem and rub the juice on skin after poison ivy or nettle contact, or on bug bites. Can be simmered and frozen into cubes for later."},
+    {"part": "Seeds", "use": "Food", "season": "Aug–Sep", "prep": "Pop the ripe pods into a bag — the seed inside tastes remarkably like walnut. Tiny but excellent trail nibble."},
+    {"part": "Young shoots", "use": "Food (caution)", "season": "Spring", "prep": "Historically boiled in two changes of water. High in calcium oxalate — genuinely not worth the risk as a vegetable."}
+  ],
+  "id_marks": [
+    "Translucent, watery, almost succulent stems with swollen nodes",
+    "Orange, spotted, horn-shaped flowers dangling on thread-like stalks",
+    "Ripe seed pods explode at a touch — hence 'touch-me-not'",
+    "Water beads up silver on the leaf underside",
+    "Damp shady ground, streamsides, ditches"
+  ],
+  "cautions": ["Do not eat the greens in quantity — oxalate content", "Pale yellow jewelweed (I. pallida) works identically"],
+  "lookalikes": ["None dangerous"]
+},
+{
+  "id": "self-heal",
+  "common": "Self-heal / Heal-all",
+  "scientific": "Prunella vulgaris",
+  "family": "Lamiaceae",
+  "kind": "herb",
+  "edibility": "edible",
+  "summary": "A mint-family herb with a long medicinal reputation and no dangerous lookalikes. Mild enough to eat.",
+  "parts": [
+    {"part": "Leaves and flower heads", "use": "Food", "season": "Jun–Sep", "prep": "Raw in salad, or cooked. Slightly bitter, faintly minty."},
+    {"part": "Whole aerial plant", "use": "Medicinal", "season": "Flowering", "prep": "Dried for a throat-soothing tea; traditional gargle for sore throat and a wash for minor wounds."}
+  ],
+  "id_marks": ["Square stem (roll it between your fingers)", "Opposite leaves", "Blunt club-shaped flower head of hooded violet flowers stacked in tiers", "Low sprawling growth in lawns, paths and grass"],
+  "cautions": ["Mild; no significant toxicity known"],
+  "lookalikes": ["Other mints — all in this family are safe to taste-test"]
+},
+{
+  "id": "st-johns-wort",
+  "common": "St. John's Wort",
+  "scientific": "Hypericum perforatum",
+  "family": "Hypericaceae",
+  "kind": "herb",
+  "edibility": "medicinal-only",
+  "summary": "Well-known medicinal, not a food. Its serious drug interactions are the reason to treat it with respect.",
+  "parts": [
+    {"part": "Flowering tops", "use": "Medicinal", "season": "Late Jun–Aug (peak at midsummer)", "prep": "Infused in oil (turns deep red) for a topical nerve/bruise/burn oil; tinctured or dried for the traditional mood remedy."}
+  ],
+  "id_marks": [
+    "Five yellow petals, often with tiny black dots along the petal edges",
+    "Bushy spray of many stamens in the flower center",
+    "Hold a leaf to the light — it is covered in translucent 'perforations' (oil glands). This is the confirming test.",
+    "Opposite, stalkless leaves on a two-ridged stem"
+  ],
+  "cautions": [
+    "Causes photosensitivity — sunburn risk in people and grazing animals",
+    "Interacts with a long list of medications: antidepressants, birth control, blood thinners, immunosuppressants, some HIV and cancer drugs. Check before internal use."
+  ],
+  "lookalikes": ["Other Hypericum species — similar, weaker"]
+},
+{
+  "id": "black-eyed-susan",
+  "common": "Black-eyed Susan",
+  "scientific": "Rudbeckia hirta",
+  "family": "Asteraceae",
+  "kind": "herb",
+  "edibility": "medicinal-only",
+  "summary": "Not a food plant. Traditional external medicinal use and a good pollinator/dye plant.",
+  "parts": [
+    {"part": "Root", "use": "Medicinal (traditional)", "season": "Fall", "prep": "Native American use as a wash for sores, snakebite and earache. Not for casual internal use."},
+    {"part": "Flowers", "use": "Dye", "season": "Jul–Sep", "prep": "Yields yellow-to-olive dye."}
+  ],
+  "id_marks": ["Bristly-hairy stems and leaves", "Golden-orange rays around a dark chocolate-brown domed center", "Alternate, coarse, lance-shaped leaves"],
+  "cautions": ["Considered mildly toxic if eaten in quantity", "Can irritate skin in sensitive people"],
+  "lookalikes": ["Coneflowers, sunflowers — none dangerous"]
+},
+{
+  "id": "daisy-fleabane",
+  "common": "Daisy Fleabane",
+  "scientific": "Erigeron cf. annuus",
+  "family": "Asteraceae",
+  "kind": "herb",
+  "edibility": "medicinal-only",
+  "summary": "Ubiquitous roadside daisy. Historically a medicinal, not a vegetable.",
+  "parts": [
+    {"part": "Leaves and flowers", "use": "Medicinal (traditional)", "season": "Jun–Sep", "prep": "Dried tea used traditionally as an astringent/diuretic and for bleeding. Also the old use as a strewn insect-repellent — hence 'fleabane.'"}
+  ],
+  "id_marks": ["Many very narrow white-to-pale-pink rays — far more numerous and thinner than a true daisy's", "Small yellow center", "Hairy, branching stems, often waist-high"],
+  "cautions": ["Asteraceae allergies", "Not recommended as a food green"],
+  "lookalikes": ["Asters — bloom later in the fall"]
+},
+{
+  "id": "coltsfoot",
+  "common": "Coltsfoot",
+  "scientific": "Tussilago farfara",
+  "family": "Asteraceae",
+  "kind": "herb",
+  "edibility": "toxic",
+  "summary": "A famous old cough remedy that modern evidence has retired. It contains liver-damaging alkaloids — treat as a plant to recognize, not to use.",
+  "parts": [
+    {"part": "Leaves/flowers", "use": "Historical medicinal — NOT RECOMMENDED", "season": "Flowers Mar–Apr, leaves after", "prep": "Formerly smoked or brewed for coughs. Now advised against."}
+  ],
+  "id_marks": [
+    "Large hoof-shaped (colt's foot) leaves, angular-toothed, white-woolly underneath",
+    "Leaves appear only AFTER the flowers are gone — 'son before the father'",
+    "Dandelion-like yellow flowers in very early spring on scaly stalks",
+    "Dense colonies on gravel, roadsides, disturbed streambanks"
+  ],
+  "cautions": [
+    "Contains pyrrolizidine alkaloids — cumulative liver toxicity, banned or restricted in several countries",
+    "Do not use during pregnancy, while nursing, or in children"
+  ],
+  "lookalikes": ["Butterbur (Petasites) — larger, similar alkaloid concerns"]
+},
+{
+  "id": "lupine",
+  "common": "Bigleaf Lupine",
+  "scientific": "Lupinus polyphyllus",
+  "family": "Fabaceae",
+  "kind": "herb",
+  "edibility": "toxic",
+  "summary": "The iconic Maine roadside lupine. Beautiful, and the seeds are poisonous — do not treat these as wild beans.",
+  "parts": [],
+  "id_marks": ["Palmate leaves — 9–17 leaflets radiating from one point like a wheel spoke", "Tall dense spike of pea-shaped flowers (purple/blue/pink), followed by hairy pods", "Water beads spectacularly in the center of the leaf"],
+  "cautions": [
+    "Seeds and pods contain quinolizidine alkaloids — toxic to people and livestock",
+    "Edible 'lupini beans' are a different, cultivated species and still require days of leaching",
+    "Do not eat any part of wild lupine"
+  ],
+  "lookalikes": ["Vetches and other legumes — many also inedible"]
+},
+{
+  "id": "vetch",
+  "common": "Vetch",
+  "scientific": "Vicia sp.",
+  "family": "Fabaceae",
+  "kind": "vine",
+  "edibility": "toxic",
+  "summary": "Common scrambling roadside legume. Some species are toxic and species-level ID is difficult — treat the whole group as not-food.",
+  "parts": [],
+  "id_marks": ["Pinnately compound leaves ending in a curling tendril", "Small purple/violet pea flowers, often in a one-sided row", "Scrambles over grasses and shrubs"],
+  "cautions": [
+    "Vicia seeds can contain toxic amino acids; hairy vetch has poisoned livestock",
+    "Grass pea relatives cause lathyrism (permanent paralysis) with sustained consumption",
+    "Do not eat"
+  ],
+  "lookalikes": ["Groundnut (Apios americana) — a genuinely prime edible tuber with similar entire leaflets, but NO tendrils and a twining stem. Worth learning to separate."]
+},
+{
+  "id": "wild-rose",
+  "common": "Wild Rose",
+  "scientific": "Rosa sp.",
+  "family": "Rosaceae",
+  "kind": "shrub",
+  "edibility": "edible",
+  "summary": "Every rose produces edible petals and vitamin-C-rich hips. No toxic lookalikes in the genus.",
+  "parts": [
+    {"part": "Hips (fruit)", "use": "Food", "season": "After first frost, Sep–Nov", "prep": "Best sweetened by frost. Split and scrape out the irritating inner hairs and seeds, then use for jelly, syrup, or tea. Very high in vitamin C."},
+    {"part": "Petals", "use": "Food", "season": "Jun–Jul", "prep": "Trim the bitter white heel. Use in syrup, jelly, sugar, or scattered on food."},
+    {"part": "Leaves", "use": "Tea", "season": "Summer", "prep": "Dried for a mild tea."}
+  ],
+  "id_marks": ["Pinnately compound leaves, usually 5–9 toothed leaflets", "Thorny/prickly canes", "Leafy stipules fused to the base of the leaf stalk", "Five-petaled pink or white flowers; orange-red hips after"],
+  "cautions": ["The hairs inside the hip are a mechanical irritant — always strain or scrape them out", "Multiflora rose is an invasive here; harvesting it freely is a public service"],
+  "lookalikes": ["Raspberry/blackberry canes — also edible"]
+},
+{
+  "id": "rubus",
+  "common": "Raspberry / Blackberry",
+  "scientific": "Rubus sp.",
+  "family": "Rosaceae",
+  "kind": "shrub",
+  "edibility": "edible",
+  "summary": "The safest wild fruit in North America — there is no poisonous lookalike for an aggregate berry on a thorny bramble cane.",
+  "parts": [
+    {"part": "Fruit", "use": "Food", "season": "Raspberry Jul; blackberry Aug–Sep", "prep": "Eat fresh. Raspberries pull free hollow, leaving the core on the plant; blackberries keep their core."},
+    {"part": "Leaves", "use": "Tea / Medicinal", "season": "Spring–summer", "prep": "Use fully fresh OR fully dried — never wilting, which can produce mild toxins. Raspberry leaf is the classic uterine tonic tea."},
+    {"part": "Young peeled shoots", "use": "Food", "season": "Spring", "prep": "Peel the first-year canes while tender and eat raw."}
+  ],
+  "id_marks": ["Arching thorny canes", "Compound leaves in 3s or 5s, sharply toothed, often silvery-white underneath (raspberry)", "Aggregate fruit made of many tiny druplets"],
+  "cautions": ["Avoid wilted leaves for tea", "Nothing else — this one is genuinely beginner-safe"],
+  "lookalikes": ["None dangerous"]
+},
+{
+  "id": "mountain-ash",
+  "common": "American Mountain-ash",
+  "scientific": "Sorbus americana",
+  "family": "Rosaceae",
+  "kind": "tree",
+  "edibility": "edible-with-caution",
+  "summary": "Bright orange berry clusters. Edible cooked and after frost — genuinely unpleasant and mildly problematic raw.",
+  "parts": [
+    {"part": "Berries", "use": "Food", "season": "After hard frost, Oct–Nov", "prep": "Must be cooked, and much better after freezing. Classic use is a tart jelly served with game. High in vitamin C."},
+    {"part": "Bark", "use": "Medicinal (traditional)", "season": "—", "prep": "Traditional astringent tonic."}
+  ],
+  "id_marks": ["Pinnately compound leaves with 11–17 narrow, sharply toothed leaflets", "Flat clusters of white flowers, then dense orange-red berry clusters", "Small tree of clearings and forest edges"],
+  "cautions": [
+    "Raw berries contain parasorbic acid — causes stomach upset. Cooking and freezing convert it to harmless sorbic acid.",
+    "Do not eat raw in quantity"
+  ],
+  "lookalikes": ["Not a true ash — despite the name. Ash trees have OPPOSITE leaves; mountain-ash is alternate."]
+},
+{
+  "id": "eastern-hemlock",
+  "common": "Eastern Hemlock",
+  "scientific": "Tsuga canadensis",
+  "family": "Pinaceae",
+  "kind": "tree",
+  "edibility": "edible",
+  "summary": "A fine vitamin-C tea tree. Completely unrelated to poison hemlock the herb — the shared name has caused real confusion, but this conifer is safe.",
+  "parts": [
+    {"part": "Needles / young tips", "use": "Tea", "season": "Best in spring when tips are bright green; usable year-round", "prep": "Steep (don't hard boil) for a citrusy, vitamin-C-rich tea. The historic scurvy remedy in the north woods."},
+    {"part": "Inner bark (cambium)", "use": "Survival food", "season": "Spring", "prep": "Dried and ground as a flour extender. Kills the tree if girdled — emergency only."},
+    {"part": "Bark", "use": "Utility", "season": "—", "prep": "Very high tannin — the historic leather-tanning bark of Maine."}
+  ],
+  "id_marks": [
+    "Short flat needles ~1/2 inch, arranged in flat sprays, with two white stripes underneath",
+    "Needles attach by tiny stalks and leave bumpy pegs when pulled",
+    "Small delicate cones under an inch, hanging at branch tips",
+    "Feathery drooping leader at the treetop"
+  ],
+  "cautions": [
+    "Not related to poison hemlock (Conium) — different kingdom of problem entirely, but know the difference",
+    "Avoid strong conifer teas during pregnancy as a general precaution"
+  ],
+  "lookalikes": ["Balsam fir and spruce — also safe for tea; yew (Taxus) is TOXIC and has flat needles too, but yew bears a red fleshy berry-like cone and no white stripes underneath"]
+},
+{
+  "id": "aspen",
+  "common": "Aspen / Poplar",
+  "scientific": "Populus cf. grandidentata",
+  "family": "Salicaceae",
+  "kind": "tree",
+  "edibility": "edible-with-caution",
+  "summary": "Not food in any real sense, but a genuinely useful medicinal and survival tree — the source of natural salicin, aspirin's precursor.",
+  "parts": [
+    {"part": "Inner bark", "use": "Medicinal / Survival food", "season": "Spring", "prep": "Contains salicin — a traditional pain and fever tea. Also edible as a survival flour extender."},
+    {"part": "Buds", "use": "Medicinal", "season": "Late winter–spring", "prep": "Resinous buds infused in oil make the traditional 'balm of Gilead' salve (strongest in balsam poplar)."},
+    {"part": "Wood", "use": "Utility", "season": "—", "prep": "Punky dry aspen is excellent friction-fire and tinder material."}
+  ],
+  "id_marks": ["Nearly round leaves with a flattened stalk, which makes them tremble in any breeze", "Big irregular teeth (bigtooth) or fine teeth (quaking)", "Smooth pale greenish-white bark, dark and furrowed at the base of old trees", "Grows in dense clonal stands from root suckers"],
+  "cautions": ["Salicin is aspirin-like — avoid if allergic to aspirin, on blood thinners, or for children with fever (Reye's syndrome risk)"],
+  "lookalikes": ["Birch — also salicin-bearing and useful"]
+},
+{
+  "id": "gray-dogwood",
+  "common": "Dogwood (shrub)",
+  "scientific": "Cornus sp.",
+  "family": "Cornaceae",
+  "kind": "shrub",
+  "edibility": "inedible",
+  "summary": "Shrub dogwoods are a wildlife food, not a human one. Worth knowing for the leaf-vein trick, which is one of the most reliable ID tests in the woods.",
+  "parts": [
+    {"part": "Bark", "use": "Medicinal (traditional)", "season": "—", "prep": "Historically a bitter tonic, quinine substitute."},
+    {"part": "Straight shoots", "use": "Utility", "season": "Winter", "prep": "Strong, straight withes for basketry and skewers."}
+  ],
+  "id_marks": [
+    "Opposite leaves with strongly arcuate (curving) veins that follow the leaf edge toward the tip",
+    "Tear a leaf slowly — fine white latex strings stretch across the break. This is the confirming test.",
+    "Often red or reddish stems in winter; white or blue-white berries"
+  ],
+  "cautions": ["Berries are bitter and can cause stomach upset — leave them for the birds"],
+  "lookalikes": ["Invasive honeysuckle — also opposite leaves, but no arcuate veins and no latex strings"]
+},
+{
+  "id": "bush-honeysuckle-invasive",
+  "common": "Morrow's / Tatarian Honeysuckle (invasive)",
+  "scientific": "Lonicera cf. morrowii",
+  "family": "Caprifoliaceae",
+  "kind": "shrub",
+  "edibility": "toxic",
+  "summary": "An aggressive invasive shrub throughout this area. The tempting red berries are not edible — this is the classic 'looks like it should be food' trap.",
+  "parts": [],
+  "id_marks": [
+    "Opposite, simple, untoothed oval leaves, softly hairy",
+    "Older stems are HOLLOW — snap one and look. Native honeysuckles have solid pith.",
+    "Paired red or orange berries hanging on a shared stalk",
+    "Leafs out earlier in spring than almost everything else — the giveaway from a distance"
+  ],
+  "cautions": [
+    "Berries cause vomiting and diarrhea in quantity; not a food",
+    "Do not confuse with edible honeyberry/haskap (a cultivated Lonicera)"
+  ],
+  "lookalikes": ["Native bush-honeysuckle (Diervilla) — toothed leaves, yellow flowers", "Dogwood — arcuate veins"]
+},
+{
+  "id": "virginia-creeper",
+  "common": "Virginia Creeper",
+  "scientific": "Parthenocissus quinquefolia",
+  "family": "Vitaceae",
+  "kind": "vine",
+  "edibility": "toxic",
+  "summary": "Harmless to touch — this is the vine you learn so you can stop panicking about it — but the berries are genuinely poisonous.",
+  "parts": [],
+  "id_marks": [
+    "FIVE leaflets radiating palmately from one point ('five leaves, let it be')",
+    "Coarsely toothed leaflets; brilliant scarlet in fall",
+    "Climbs by tendrils tipped with adhesive pads",
+    "Blue-black berries on bright red-pink stalks"
+  ],
+  "cautions": [
+    "Berries contain concentrated oxalate crystals — genuinely toxic, dangerous to children",
+    "Sap causes skin irritation in some people",
+    "Grows tangled with poison ivy constantly — count the leaflets before grabbing anything"
+  ],
+  "lookalikes": ["Poison ivy — 3 leaflets, not 5. This is the single most useful distinction to learn."]
+},
+{
+  "id": "wild-sarsaparilla",
+  "common": "Wild Sarsaparilla",
+  "scientific": "Aralia nudicaulis",
+  "family": "Araliaceae",
+  "kind": "herb",
+  "edibility": "edible-with-caution",
+  "summary": "The classic root-beer root of the northern woods. The root is the useful part; the berries are not.",
+  "parts": [
+    {"part": "Rhizome (root)", "use": "Food / Tea", "season": "Spring or fall", "prep": "Long aromatic runners just under the leaf litter. Simmer for a spicy root-beer-flavored tea or small-batch soda. A traditional trail stimulant."},
+    {"part": "Young shoots", "use": "Food", "season": "Early spring, before unfurling", "prep": "Cooked, in small quantity."}
+  ],
+  "id_marks": [
+    "A single long bare stalk from the ground splits into exactly 3 branches, each with 3–5 toothed leaflets, held in one flat horizontal plane",
+    "No visible woody stem — the 'leaf' is the whole plant above ground",
+    "Greenish-white flower balls hide UNDER the leaf canopy, on a separate short stalk"
+  ],
+  "cautions": ["Dark purple berries: not considered edible, reportedly cause nausea", "Harvesting the rhizome kills that plant — take sparingly from large colonies"],
+  "lookalikes": [
+    "Young ash saplings — but ash has OPPOSITE compound leaves on a woody stem",
+    "Bristly sarsaparilla (A. hispida) — bristly lower stem, avoid"
+  ]
+},
+{
+  "id": "pipsissewa",
+  "common": "Pipsissewa",
+  "scientific": "Chimaphila umbellata",
+  "family": "Ericaceae",
+  "kind": "herb",
+  "edibility": "edible-with-caution",
+  "summary": "Small evergreen woodland herb, another traditional root-beer flavoring. Slow-growing — admire more than harvest.",
+  "parts": [
+    {"part": "Leaves", "use": "Tea / Flavoring", "season": "Year-round (evergreen)", "prep": "A traditional root beer and soft-drink flavoring; also brewed as a medicinal tea for the urinary tract."}
+  ],
+  "id_marks": ["Whorls of glossy, dark green, leathery, sharply toothed leaves, widest above the middle", "Only 4–10 inches tall, evergreen, in dry pine/oak duff", "Nodding waxy pink-white flowers in summer"],
+  "cautions": [
+    "Contains hydroquinone-type compounds — not for regular or long-term internal use, or in pregnancy",
+    "Slow to spread and locally uncommon — harvest little or nothing"
+  ],
+  "lookalikes": ["Spotted wintergreen (C. maculata) — white-striped veins", "Teaberry/wintergreen (Gaultheria) — alternate leaves, strong wintergreen smell, edible red berries"]
+},
+{
+  "id": "hemp-nettle",
+  "common": "Hemp-nettle",
+  "scientific": "Galeopsis tetrahit",
+  "family": "Lamiaceae",
+  "kind": "herb",
+  "edibility": "inedible",
+  "summary": "A bristly mint-family weed of Maine field edges. Not a stinging nettle, and not a useful green.",
+  "parts": [
+    {"part": "Aerial parts", "use": "Medicinal (marginal, traditional)", "season": "Summer", "prep": "Old European folk use as a respiratory tea. Little modern support; not recommended."}
+  ],
+  "id_marks": ["Square stem, distinctly SWOLLEN just below each leaf node — the key feature", "Stiff downward-pointing bristles on the stem", "Whorls of small pink-purple hooded flowers with a spiny calyx, stacked at the leaf joints"],
+  "cautions": ["Bristles irritate skin", "Not worth eating"],
+  "lookalikes": ["Stinging nettle (Urtica dioica) — a genuinely excellent cooked green; it has narrower, more deeply toothed leaves, stings sharply on contact, and no swollen nodes"]
+},
+{
+  "id": "smooth-bedstraw",
+  "common": "Smooth Bedstraw / Wild Madder",
+  "scientific": "Galium mollugo",
+  "family": "Rubiaceae",
+  "kind": "herb",
+  "edibility": "edible-with-caution",
+  "summary": "Invasive mat-forming roadside plant. Its close relative cleavers is the useful one; this species is mostly a nuisance with minor uses.",
+  "parts": [
+    {"part": "Young shoots", "use": "Food (marginal)", "season": "Spring", "prep": "Cooked; bland and slightly scratchy. The related cleavers (G. aparine) is the better spring tonic green."},
+    {"part": "Roots", "use": "Dye", "season": "Fall", "prep": "Madder-family roots give a red-pink dye."},
+    {"part": "Dried plant", "use": "Utility", "season": "Summer", "prep": "The historic mattress stuffing — hence 'bedstraw.'"}
+  ],
+  "id_marks": ["Whorls of 6–8 narrow leaves at each node, like spokes", "Square, weak, sprawling stems forming dense mats", "Airy clouds of tiny 4-petaled white flowers"],
+  "cautions": ["Aggressive invasive in Maine hayfields", "Some people get contact dermatitis from Galium"],
+  "lookalikes": ["Cleavers (G. aparine) — sticky/velcro-textured, the preferred edible and lymphatic tonic"]
+},
+{
+  "id": "willowherb",
+  "common": "Willowherb",
+  "scientific": "Epilobium sp.",
+  "family": "Onagraceae",
+  "kind": "herb",
+  "edibility": "edible-with-caution",
+  "summary": "Small cousin of fireweed. Edible in the same ways but far less rewarding.",
+  "parts": [
+    {"part": "Young shoots and leaves", "use": "Food", "season": "Spring", "prep": "Cooked like a green; bitter as it matures."},
+    {"part": "Leaves", "use": "Tea", "season": "Summer", "prep": "Dried, or fermented in the Russian 'Ivan chai' style (best with true fireweed)."}
+  ],
+  "id_marks": ["Four notched pink petals", "A long, thin seed capsule below the flower that looks like a stalk — the family giveaway", "Seeds released in silky white fluff"],
+  "cautions": ["Mild; identify to genus and prefer true fireweed (Chamerion angustifolium) for actual use"],
+  "lookalikes": ["Fireweed — much taller, showy magenta spikes, a genuinely good edible"]
+},
+{
+  "id": "wild-lettuce",
+  "common": "Wild Lettuce",
+  "scientific": "Lactuca sp.",
+  "family": "Asteraceae",
+  "kind": "herb",
+  "edibility": "edible-with-caution",
+  "summary": "Edible when young, unpleasantly bitter once it bolts. The milky sap has a mild sedative reputation.",
+  "parts": [
+    {"part": "Young basal leaves", "use": "Food", "season": "Early spring", "prep": "Raw when small; boil in a change of water once bitterness sets in."},
+    {"part": "Milky sap (lactucarium)", "use": "Medicinal (traditional)", "season": "Flowering", "prep": "Dried latex used historically as a mild sedative/pain reliever — 'lettuce opium.' Weak and unreliable."}
+  ],
+  "id_marks": ["Deeply pinnately lobed leaves clasping a tall stem", "Milky white sap from any break", "A row of prickles along the underside midrib in prickly lettuce", "Small dandelion-like yellow flowers, many per plant"],
+  "cautions": ["Very bitter with age", "Large amounts of the sap can cause nausea and drowsiness"],
+  "lookalikes": ["Sow thistle — also edible", "Dandelion — related, all safe in this group"]
+},
+{
+  "id": "buttercup",
+  "common": "Buttercup",
+  "scientific": "Ranunculus cf. acris",
+  "family": "Ranunculaceae",
+  "kind": "herb",
+  "edibility": "toxic",
+  "summary": "Do not eat. Fresh buttercup blisters skin and mouth — a common and easily avoided mistake among lawn greens.",
+  "parts": [],
+  "id_marks": ["Palmately divided leaves cut into sharp, deep lobes", "Glossy, almost lacquered-looking five-petaled yellow flowers", "Common in damp pasture and lawn"],
+  "cautions": [
+    "Contains protoanemonin — causes blistering of skin and mucous membranes, and stomach inflammation if eaten",
+    "Toxicity breaks down on thorough drying (which is why hay is safe) but never rely on that"
+  ],
+  "lookalikes": ["Marsh marigold — also requires cooking and is often misidentified", "Wild geranium and cinquefoil — similar leaf shapes"]
+},
+{
+  "id": "dogbane",
+  "common": "Spreading Dogbane (probable)",
+  "scientific": "Apocynum cf. androsaemifolium",
+  "family": "Apocynaceae",
+  "kind": "herb",
+  "edibility": "toxic",
+  "summary": "Toxic to eat, but one of the best wild cordage fibers in North America.",
+  "parts": [
+    {"part": "Dead winter stalks", "use": "Utility (cordage)", "season": "Late fall–winter, after the plant dies back", "prep": "Split the dry stalk, peel off the outer bark fiber, buff and reverse-wrap into exceptionally strong string."}
+  ],
+  "id_marks": ["Opposite, untoothed, oval leaves", "Reddish stems that branch in a forking pattern", "Milky sap when broken", "Long slender paired seed pods"],
+  "cautions": [
+    "Contains cardiac glycosides — genuinely poisonous, affects the heart. Do not eat any part.",
+    "Milky sap irritates skin and eyes"
+  ],
+  "lookalikes": ["Common milkweed — larger, broader leaves, edible when properly cooked. Confusing the two is a classic and serious beginner error; milkweed pods are fat and warty, dogbane pods are thin as a bean."]
+},
+{
+  "id": "christmas-fern",
+  "common": "Christmas Fern",
+  "scientific": "Polystichum acrostichoides",
+  "family": "Dryopteridaceae",
+  "kind": "fern",
+  "edibility": "inedible",
+  "summary": "Evergreen woodland fern — useful as a winter green marker, not as food.",
+  "parts": [
+    {"part": "Fronds", "use": "Utility", "season": "Year-round (evergreen)", "prep": "Stays green through winter — historically cut for Christmas decoration, and useful as emergency bedding insulation."}
+  ],
+  "id_marks": [
+    "Once-pinnate, leathery, dark green fronds — stays green all winter",
+    "Each leaflet has a small thumb/ear at its base, so it looks like a Christmas stocking",
+    "Silvery, scaly fiddleheads in spring"
+  ],
+  "cautions": ["Not edible — do not confuse with ostrich fern fiddleheads"],
+  "lookalikes": ["Ostrich fern (Matteuccia) — the ONLY commonly eaten fiddlehead in Maine: deep U-shaped grooved stem, papery brown scales, grows in floodplain clumps"]
+},
+{
+  "id": "sensitive-fern",
+  "common": "Sensitive Fern",
+  "scientific": "Onoclea sensibilis",
+  "family": "Onocleaceae",
+  "kind": "fern",
+  "edibility": "toxic",
+  "summary": "Important to know precisely because it grows alongside edible ostrich fern in the same wet ground.",
+  "parts": [],
+  "id_marks": [
+    "Broadly triangular frond with wavy-edged, nearly untoothed leaflets joined by a winged rachis",
+    "Dies at the first frost — hence 'sensitive'",
+    "Separate stiff, beaded, dark brown fertile stalks that persist all winter"
+  ],
+  "cautions": [
+    "Considered toxic — known to poison horses; fiddleheads are not safe to eat",
+    "Its fiddleheads emerge in the same wet ground as ostrich fern. Learn the difference before harvesting any fiddlehead."
+  ],
+  "lookalikes": ["Ostrich fern — the edible one. Check for the deep U-shaped groove down the stem and papery scales."]
+},
+{
+  "id": "hay-scented-fern",
+  "common": "Hay-scented Fern",
+  "scientific": "Dennstaedtia punctilobula",
+  "family": "Dennstaedtiaceae",
+  "kind": "fern",
+  "edibility": "inedible",
+  "summary": "The lacy fern that carpets Maine clearings in huge colonies. Smells like fresh hay when crushed. Not edible.",
+  "parts": [],
+  "id_marks": ["Finely cut, lacy, yellow-green fronds, tapering at both ends", "Sweet hay smell when crushed or when drying", "Forms dense continuous colonies that shade out tree seedlings"],
+  "cautions": ["Ferns in this family contain thiaminase and carcinogenic compounds — do not eat", "Can cause contact dermatitis"],
+  "lookalikes": ["Bracken fern — also inedible despite historic use"]
+},
+{
+  "id": "red-belted-conk",
+  "common": "Red-belted Conk",
+  "scientific": "Fomitopsis pinicola",
+  "family": "Fomitopsidaceae",
+  "kind": "fungus",
+  "edibility": "medicinal-only",
+  "summary": "Woody perennial bracket on conifers. Far too tough to eat, but a genuinely useful medicinal, tinder and dye fungus.",
+  "parts": [
+    {"part": "Whole conk", "use": "Medicinal tea", "season": "Year-round", "prep": "Chip or slice and simmer for a long time (an hour-plus) — a bitter, resinous tea with antimicrobial and anti-inflammatory traditional use."},
+    {"part": "Whole conk", "use": "Utility — firecraft", "season": "Year-round", "prep": "The dried interior flesh takes a spark and holds a coal well; a good tinder/coal-carrier."},
+    {"part": "Whole conk", "use": "Dye", "season": "Year-round", "prep": "Yields yellow-brown to rust tones on wool."}
+  ],
+  "id_marks": [
+    "Hard, hoof- to shelf-shaped bracket on dead or dying conifers",
+    "Concentric zones: blackish-grey old center, a distinct RED-ORANGE resinous band, then a cream-white growing margin",
+    "The red crust looks like melted sealing wax — press a hot needle to it and it melts",
+    "Cream pore surface underneath that bruises yellowish"
+  ],
+  "cautions": [
+    "Too woody to eat — tea or extract only",
+    "Not a culinary mushroom; do not attempt to cook and eat the flesh"
+  ],
+  "lookalikes": ["Hemlock varnish shelf / reishi (Ganoderma tsugae) — glossier, kidney-shaped, often stalked, softer when fresh; a better-known medicinal, also conifer-loving"]
+},
+{
+  "id": "polypore-weathered",
+  "common": "Small Bracket Fungi (weathered)",
+  "scientific": "Trametes / Trichaptum sp.",
+  "family": "Polyporaceae",
+  "kind": "fungus",
+  "edibility": "medicinal-only",
+  "summary": "Old, algae-greened shelf fungi on a downed log. Too weathered to name with confidence — likely turkey tail or violet-toothed polypore.",
+  "parts": [
+    {"part": "Fresh caps (if turkey tail)", "use": "Medicinal tea", "season": "Fall, when fresh", "prep": "Turkey tail is simmered for a well-studied immune-supportive tea. Only harvest fresh, flexible, clearly banded specimens — not weathered ones like these."}
+  ],
+  "id_marks": ["Small thin overlapping shelves in tiers along dead wood", "Turkey tail: velvety concentric bands of contrasting color, white pore surface with tiny pores", "Violet-toothed polypore: purple-tinged, ragged tooth-like underside"],
+  "cautions": [
+    "Old weathered brackets are colonized by molds and algae — do not use",
+    "Confirm the underside before using anything called turkey tail: true turkey tail has fine pores, not a smooth surface (that would be the false turkey tail, Stereum)"
+  ],
+  "lookalikes": ["False turkey tail (Stereum ostrea) — smooth underside, no pores"]
+},
+{
+  "id": "bolete-unknown",
+  "common": "Bolete (unidentified)",
+  "scientific": "Boletaceae",
+  "family": "Boletaceae",
+  "kind": "fungus",
+  "edibility": "unknown",
+  "summary": "An orange-brown capped mushroom in leaf litter. The underside was not photographed, so it cannot be identified — and unidentified mushrooms are not food.",
+  "parts": [],
+  "id_marks": [
+    "To identify a bolete you MUST photograph: the pore surface underneath, the stem (whole, dug not cut), a cut cross-section, and note any color change on bruising",
+    "Boletes have a sponge of pores under the cap rather than gills"
+  ],
+  "cautions": [
+    "Do not eat any mushroom identified only from a top-down photo",
+    "Most boletes are safe but several cause serious gastric illness, and red-pored, instantly blue-bruising species should always be avoided",
+    "Get a positive ID in hand from an experienced local forager or a Maine mycological society before ever eating a wild mushroom"
+  ],
+  "lookalikes": ["Many — this genus needs in-hand examination"]
+},
+{
+  "id": "ash-sapling",
+  "common": "Ash (sapling)",
+  "scientific": "Fraxinus sp.",
+  "family": "Oleaceae",
+  "kind": "tree",
+  "edibility": "inedible",
+  "summary": "Not a food tree, but one of the most valuable utility woods in the region — and one now under severe threat.",
+  "parts": [
+    {"part": "Wood", "use": "Utility", "season": "—", "prep": "Splits along its growth rings, which is why brown ash is the traditional Wabanaki basket wood. Also the classic tool-handle and paddle wood."}
+  ],
+  "id_marks": [
+    "OPPOSITE compound leaves — one of the few trees here that does this",
+    "5–11 leaflets, pointed, finely toothed",
+    "Diamond-pattern furrowed bark on mature trunks"
+  ],
+  "cautions": ["Emerald ash borer is killing ash across Maine — don't move ash firewood between areas"],
+  "lookalikes": ["Wild sarsaparilla — herbaceous, single stalk splitting into 3", "Mountain-ash — ALTERNATE leaves, unrelated"]
+},
+{
+  "id": "unknown",
+  "common": "Unidentified / Habitat shot",
+  "scientific": "—",
+  "family": "—",
+  "kind": "other",
+  "edibility": "unknown",
+  "summary": "Photos that are scene/habitat context, or where there isn't enough detail to name a single subject with confidence.",
+  "parts": [],
+  "id_marks": ["For a confident ID later, capture: the whole plant, a close-up of a leaf showing arrangement (opposite vs alternate), the stem, the flower or fruit, and the growing habitat"],
+  "cautions": ["Never eat anything from this category"],
+  "lookalikes": []
+}
+]

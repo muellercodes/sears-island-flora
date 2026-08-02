@@ -1,0 +1,36 @@
+name: Deploy field guide
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Privacy check (fails the build if EXIF or precise GPS is present)
+        run: python3 scripts/plantdb.py verify
+      - name: Build public/
+        run: python3 scripts/plantdb.py publish
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true   # turn Pages on automatically instead of requiring a manual Settings step
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+      - id: deployment
+        uses: actions/deploy-pages@v4

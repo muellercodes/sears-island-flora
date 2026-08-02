@@ -1,0 +1,403 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sears Island Flora Survey</title>
+<style>
+  :root {
+    --bg:#f6f5f1; --panel:#fff; --ink:#1d211c; --muted:#6b7268; --line:#e0ded6;
+    --accent:#3f6b38; --shadow:0 1px 3px rgba(0,0,0,.07),0 6px 20px rgba(0,0,0,.05);
+    --edible:#2e7d32; --caution:#b26a00; --med:#4a6fa5; --inedible:#6b7268; --toxic:#b3261e; --unknown:#8a8f86;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#14170f; --panel:#1c2018; --ink:#e8eae2; --muted:#9aa294; --line:#2e3428;
+            --accent:#8fbf7f; --shadow:0 1px 3px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.3);
+            --edible:#7cc47f; --caution:#e0a44a; --med:#8fb0dd; --inedible:#9aa294; --toxic:#f2837a; --unknown:#8a8f86; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+         font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+         -webkit-font-smoothing:antialiased; }
+  a { color:var(--accent); }
+  .wrap { max-width:1180px; margin:0 auto; padding:0 20px; }
+  main.wrap { padding-bottom:80px; }
+
+  header { position:sticky; top:0; z-index:20; background:var(--bg);
+           border-bottom:1px solid var(--line); padding:18px 0 12px; }
+  .title { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; }
+  h1 { font-size:21px; margin:0; letter-spacing:-.01em; }
+  .sub { color:var(--muted); font-size:13px; }
+  .controls { display:flex; gap:10px; margin-top:12px; flex-wrap:wrap; align-items:center; }
+  input[type=search] { flex:1 1 220px; min-width:180px; padding:9px 12px; border-radius:9px;
+    border:1px solid var(--line); background:var(--panel); color:var(--ink); font-size:15px; }
+  input[type=search]:focus { outline:2px solid var(--accent); outline-offset:-1px; }
+  .seg { display:flex; border:1px solid var(--line); border-radius:9px; overflow:hidden; background:var(--panel); }
+  .seg button { border:0; background:transparent; color:var(--muted); padding:9px 14px;
+    font-size:14px; cursor:pointer; font-family:inherit; }
+  .seg button[aria-pressed=true] { background:var(--accent); color:#fff; }
+  @media (prefers-color-scheme: dark) { .seg button[aria-pressed=true] { color:#14170f; } }
+
+  .chips { display:flex; gap:7px; flex-wrap:wrap; margin-top:10px; }
+  .chip { border:1px solid var(--line); background:var(--panel); color:var(--muted);
+    border-radius:999px; padding:5px 12px; font-size:13px; cursor:pointer; font-family:inherit; }
+  .chip[aria-pressed=true] { border-color:currentColor; font-weight:600; }
+  .chip.c-edible[aria-pressed=true]{color:var(--edible)} .chip.c-caution[aria-pressed=true]{color:var(--caution)}
+  .chip.c-med[aria-pressed=true]{color:var(--med)} .chip.c-inedible[aria-pressed=true]{color:var(--inedible)}
+  .chip.c-toxic[aria-pressed=true]{color:var(--toxic)} .chip.c-unknown[aria-pressed=true]{color:var(--unknown)}
+
+  .safety { display:flex; gap:12px; align-items:flex-start; background:var(--panel);
+    border:1px solid var(--line); border-left:4px solid var(--toxic);
+    border-radius:10px; padding:13px 16px; margin:20px 0 4px; font-size:14px; box-shadow:var(--shadow); }
+  .safety b { color:var(--toxic); }
+  .safety p { margin:0; color:var(--muted); }
+
+  .count { color:var(--muted); font-size:13px; margin:22px 0 12px; }
+
+  .grid { display:grid; gap:16px; grid-template-columns:repeat(auto-fill,minmax(235px,1fr)); }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:13px; overflow:hidden;
+    cursor:pointer; box-shadow:var(--shadow); text-align:left; padding:0; font-family:inherit;
+    color:inherit; transition:transform .12s ease, box-shadow .12s ease; display:flex; flex-direction:column; }
+  .card:hover { transform:translateY(-2px); box-shadow:0 4px 8px rgba(0,0,0,.09),0 12px 32px rgba(0,0,0,.09); }
+  .card:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  .card img { width:100%; aspect-ratio:4/3; object-fit:cover; display:block; background:var(--line); }
+  .card img.secondary { opacity:.62; }
+  .card:hover img.secondary { opacity:.8; }
+  .noshot { width:100%; aspect-ratio:4/3; display:flex; flex-direction:column; align-items:center;
+    justify-content:center; gap:6px; background:var(--bg); border-bottom:1px solid var(--line);
+    color:var(--muted); text-align:center; }
+  .noshot span { font-size:26px; opacity:.5; }
+  .noshot small { font-size:11.5px; line-height:1.4; }
+  .card .body { padding:12px 14px 14px; flex:1; }
+  .card h3 { margin:0 0 2px; font-size:15.5px; line-height:1.3; }
+  .card .sci { font-style:italic; color:var(--muted); font-size:12.5px; }
+  .card .meta { margin-top:9px; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .card .uses { margin-top:8px; font-size:12.5px; color:var(--muted); }
+
+  .badge { font-size:11px; font-weight:700; letter-spacing:.04em; text-transform:uppercase;
+    padding:3px 8px; border-radius:5px; color:#fff; white-space:nowrap; }
+  .b-edible{background:var(--edible)} .b-caution{background:var(--caution)} .b-medicinal{background:var(--med)}
+  .b-inedible{background:var(--inedible)} .b-toxic{background:var(--toxic)} .b-unknown{background:var(--unknown)}
+  .newflag { background:color-mix(in srgb, var(--caution) 10%, transparent); border:1px solid var(--caution);
+    border-radius:10px; padding:13px 16px; margin:0 0 20px; font-size:14px; }
+  .newflag h4 { margin:0 0 6px; color:var(--caution); font-size:13px; text-transform:uppercase; letter-spacing:.05em; }
+  .newflag p { margin:0; color:var(--ink); }
+  @media (prefers-color-scheme: dark) { .badge { color:#14170f; } }
+  .pcount { font-size:12px; color:var(--muted); }
+  .danger-flag { color:var(--toxic); font-weight:700; font-size:12px; }
+
+  dialog { border:0; padding:0; background:transparent; max-width:920px; width:calc(100% - 32px); }
+  dialog::backdrop { background:rgba(10,14,8,.62); backdrop-filter:blur(3px); }
+  .sheet { background:var(--panel); border-radius:15px; box-shadow:0 24px 70px rgba(0,0,0,.35);
+    max-height:88vh; overflow-y:auto; color:var(--ink); }
+  .sheet-head { position:sticky; top:0; background:var(--panel); border-bottom:1px solid var(--line);
+    padding:20px 24px 16px; display:flex; justify-content:space-between; gap:16px; align-items:flex-start; z-index:2; }
+  .sheet-head h2 { margin:0 0 3px; font-size:22px; letter-spacing:-.01em; }
+  .sheet-head .sci { font-style:italic; color:var(--muted); font-size:14px; }
+  .sheet-head .fam { color:var(--muted); font-size:12.5px; margin-top:4px; }
+  .x { border:0; background:var(--line); color:var(--ink); width:32px; height:32px; border-radius:50%;
+    font-size:19px; line-height:1; cursor:pointer; flex:none; font-family:inherit; }
+  .sheet-body { padding:20px 24px 28px; }
+  .summary { font-size:16px; margin:0 0 20px; }
+  .alert { background:color-mix(in srgb, var(--toxic) 9%, transparent); border:1px solid var(--toxic);
+    border-radius:10px; padding:14px 16px; margin:0 0 20px; }
+  .alert h4 { margin:0 0 7px; color:var(--toxic); font-size:14px; text-transform:uppercase; letter-spacing:.05em; }
+
+  h4.sec { font-size:12px; text-transform:uppercase; letter-spacing:.07em; color:var(--muted);
+    margin:24px 0 9px; border-top:1px solid var(--line); padding-top:16px; }
+  .sheet-body ul { margin:0; padding-left:20px; }
+  .sheet-body li { margin-bottom:6px; }
+
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  th { text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.05em;
+    color:var(--muted); font-weight:600; padding:0 10px 7px 0; border-bottom:1px solid var(--line); }
+  td { padding:10px 10px 10px 0; border-bottom:1px solid var(--line); vertical-align:top; }
+  td.part { font-weight:600; white-space:nowrap; }
+  td.use { white-space:nowrap; color:var(--accent); font-weight:500; }
+  td.season { white-space:nowrap; color:var(--muted); font-size:13px; }
+  @media (max-width:620px){ table,tbody,tr,td,th{display:block} thead{display:none}
+    td{border:0;padding:2px 0} tr{border-bottom:1px solid var(--line);padding:12px 0;display:block}
+    td.part{font-size:15px} td.use{font-size:13px} }
+
+  .shots { display:grid; gap:12px; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); }
+  .shot { border-radius:10px; overflow:hidden; border:1px solid var(--line); background:var(--bg); }
+  .shot img { width:100%; aspect-ratio:3/4; object-fit:cover; display:block; cursor:zoom-in; }
+  .shot .cap { padding:8px 10px 10px; font-size:12px; color:var(--muted); }
+  .shot .conf { font-weight:600; text-transform:uppercase; font-size:10px; letter-spacing:.05em; }
+  .conf-high{color:var(--edible)} .conf-medium{color:var(--caution)}
+  .conf-low,.conf-unidentified{color:var(--muted)}
+
+  .photo-grid { display:grid; gap:12px; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); }
+  .pcard { border:1px solid var(--line); border-radius:11px; overflow:hidden; background:var(--panel);
+    cursor:pointer; padding:0; font-family:inherit; color:inherit; text-align:left; box-shadow:var(--shadow); }
+  .pcard img { width:100%; aspect-ratio:3/4; object-fit:cover; display:block; background:var(--line); }
+  .pcard .cap { padding:9px 11px 11px; }
+  .pcard .cap .n { font-size:13px; font-weight:600; line-height:1.3; }
+  .pcard .cap .t { font-size:11px; color:var(--muted); margin-top:3px; }
+
+  .empty { color:var(--muted); padding:50px 0; text-align:center; }
+  footer { color:var(--muted); font-size:12.5px; margin-top:48px; border-top:1px solid var(--line); padding-top:18px; }
+  code { background:var(--line); padding:2px 6px; border-radius:5px; font-size:12.5px; }
+  #lightbox::backdrop { background:rgba(0,0,0,.9); }
+  #lightbox img { max-width:100%; max-height:90vh; display:block; margin:0 auto; border-radius:8px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <div class="title">
+      <h1>Sears Island Flora Survey</h1>
+      <span class="sub" id="hdr-sub"></span>
+    </div>
+    <div class="controls">
+      <input type="search" id="q" placeholder="Search name, part, use, caution…  ( / )" autocomplete="off">
+      <div class="seg" role="group" aria-label="View">
+        <button id="v-species" aria-pressed="true">Species</button>
+        <button id="v-photos" aria-pressed="false">All photos</button>
+      </div>
+    </div>
+    <div class="chips" id="filters"></div>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="safety">
+    <span style="font-size:22px;line-height:1.05">🔬</span>
+    <p><b>These identifications are AI-generated from volunteer photographs and have not been
+       verified in the field.</b> Treat every record as a lead to go and check, not a finding.
+       Nothing here should be cited as evidence of a species' presence or absence on the island
+       until someone qualified has confirmed it on the ground and dated that confirmation.<br>
+       Regulated-species records in particular need in-person verification against the current
+       <a href="https://www.maine.gov/dacf/php/horticulture/invasiveplants.shtml">Maine DACF list</a>
+       before being reported to anyone.</p>
+  </div>
+
+  <p class="count" id="count"></p>
+  <div id="view"></div>
+
+  <footer>
+    <p>Generated from <span id="nphotos"></span> photos · <span id="gen"></span></p>
+    <p>Add more photos: <code>python3 scripts/plantdb.py ingest ~/path/to/folder</code> — then
+       <code>python3 scripts/plantdb.py todo</code> to see what needs naming.</p>
+  </footer>
+</main>
+
+<dialog id="sheet"><div class="sheet" id="sheet-content"></div></dialog>
+<dialog id="lightbox"><img id="lightbox-img" alt=""></dialog>
+
+<script src="app/data.js"></script>
+<script>
+const DB = window.PLANT_DB || {species:[], observations:[]};
+const SP = Object.fromEntries(DB.species.map(s => [s.id, s]));
+const OBS = DB.observations;
+const byS = {};       // photos where this species is the main subject
+const alsoS = {};     // photos where it's visible but not the subject — still a real record of it growing there
+OBS.forEach(o => {
+  (byS[o.species_id] ||= []).push(o);
+  (o.also || []).forEach(id => (alsoS[id] ||= []).push(o));
+});
+
+const EDI = {
+  edible:            {label:"Edible",          cls:"b-edible",   chip:"c-edible"},
+  "edible-with-caution":{label:"Edible · caution", cls:"b-caution", chip:"c-caution"},
+  "medicinal-only":  {label:"Medicinal / use", cls:"b-medicinal",chip:"c-med"},
+  inedible:          {label:"Not edible",      cls:"b-inedible", chip:"c-inedible"},
+  toxic:             {label:"Toxic",           cls:"b-toxic",    chip:"c-toxic"},
+  unknown:           {label:"Unidentified",    cls:"b-unknown",  chip:"c-unknown"},
+};
+const STATUS = {
+  regulated:   {label:"Regulated",  cls:"b-toxic",    chip:"c-toxic"},
+  invasive:    {label:"Invasive",   cls:"b-caution",  chip:"c-caution"},
+  unknown:     {label:"Status TBD", cls:"b-unknown",  chip:"c-unknown"},
+  introduced:  {label:"Introduced", cls:"b-medicinal",chip:"c-med"},
+  native:      {label:"Native",     cls:"b-edible",   chip:"c-edible"},
+};
+const ORDER = ["regulated","invasive","unknown","introduced","native"];
+const statusOf = s => STATUS[s.origin_status] ? s.origin_status : "unknown";
+const badgeOf = s => STATUS[statusOf(s)];
+const isAuto = s => typeof s.source === "string" && s.source.startsWith("auto");
+
+let mode = "species", query = "", active = new Set();
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+// ---- filters -------------------------------------------------------------
+$("filters").innerHTML = ORDER.map(k => {
+  const n = DB.species.filter(s => statusOf(s) === k).length;
+  return n ? `<button class="chip ${STATUS[k].chip}" data-k="${k}" aria-pressed="false">${STATUS[k].label} <span style="opacity:.6">${n}</span></button>` : "";
+}).join("");
+$("filters").onclick = e => {
+  const b = e.target.closest(".chip"); if (!b) return;
+  const k = b.dataset.k;
+  active.has(k) ? active.delete(k) : active.add(k);
+  b.setAttribute("aria-pressed", active.has(k));
+  render();
+};
+
+$("q").oninput = e => { query = e.target.value.toLowerCase().trim(); render(); };
+$("v-species").onclick = () => setMode("species");
+$("v-photos").onclick  = () => setMode("photos");
+function setMode(m) {
+  mode = m;
+  $("v-species").setAttribute("aria-pressed", m === "species");
+  $("v-photos").setAttribute("aria-pressed", m === "photos");
+  render();
+}
+document.addEventListener("keydown", e => {
+  if (e.key === "/" && document.activeElement !== $("q") && !$("sheet").open) { e.preventDefault(); $("q").focus(); }
+});
+
+// ---- search --------------------------------------------------------------
+function haystack(s) {
+  return [s.common, s.scientific, s.family, s.summary, s.edibility, s.kind,
+    s.origin_status, s.origin_note,
+    ...(s.parts || []).flatMap(p => [p.part, p.use, p.season, p.prep]),
+    ...(s.id_marks || []), ...(s.cautions || []), ...(s.lookalikes || []),
+    ...(byS[s.id] || []).map(o => o.note),
+    ...(alsoS[s.id] || []).map(o => o.note)].join(" ").toLowerCase();
+}
+const matches = s => (!query || haystack(s).includes(query)) && (!active.size || active.has(statusOf(s)));
+
+// ---- render --------------------------------------------------------------
+function render() {
+  const list = DB.species.filter(matches)
+    .sort((a, b) => ORDER.indexOf(statusOf(a)) - ORDER.indexOf(statusOf(b)) || a.common.localeCompare(b.common));
+
+  if (mode === "species") {
+    $("count").textContent = `${list.length} entries · ${list.reduce((n, s) => n + (byS[s.id] || []).length, 0)} photos`;
+    $("view").innerHTML = list.length ? `<div class="grid">${list.map(cardHTML).join("")}</div>`
+      : `<p class="empty">Nothing matches that.</p>`;
+    $("view").querySelectorAll(".card").forEach(c => c.onclick = () => openSheet(c.dataset.id));
+  } else {
+    const ok = new Set(list.map(s => s.id));
+    const shots = OBS.filter(o => ok.has(o.species_id));
+    $("count").textContent = `${shots.length} photos`;
+    $("view").innerHTML = shots.length ? `<div class="photo-grid">${shots.map(photoHTML).join("")}</div>`
+      : `<p class="empty">Nothing matches that.</p>`;
+    $("view").querySelectorAll(".pcard").forEach(c => c.onclick = () => openSheet(c.dataset.id));
+  }
+}
+
+function cardHTML(s) {
+  const shots = byS[s.id] || [];
+  const also = alsoS[s.id] || [];
+  const cover = shots[0] || also[0];   // fall back to a photo it merely appears in
+  const e = badgeOf(s);
+  const uses = [...new Set((s.parts || []).map(p => p.part))].slice(0, 3).join(" · ");
+  return `<button class="card" data-id="${s.id}">
+    ${cover ? `<img loading="lazy" src="thumbs/${esc(cover.file)}" alt="${esc(s.common)}"${shots[0] ? "" : ' class="secondary"'}>`
+            : `<div class="noshot"><span>🌿</span><small>Reference entry<br>no photo yet</small></div>`}
+    <div class="body">
+      <h3>${esc(s.common)}${s.danger ? ' <span class="danger-flag">!</span>' : ""}</h3>
+      <div class="sci">${esc(s.scientific)}</div>
+      <div class="meta">
+        <span class="badge ${e.cls}">${e.label}</span>
+        <span class="pcount">${shots.length ? `${shots.length} photo${shots.length === 1 ? "" : "s"}`
+          : also.length ? `seen in ${also.length} photo${also.length === 1 ? "" : "s"}` : "no photo"}</span>
+      </div>
+      ${uses ? `<div class="uses">${esc(uses)}</div>` : ""}
+    </div></button>`;
+}
+
+function photoHTML(o) {
+  const s = SP[o.species_id] || SP.unknown;
+  return `<button class="pcard" data-id="${o.species_id}">
+    <img loading="lazy" src="thumbs/${esc(o.file)}" alt="${esc(s.common)}">
+    <div class="cap"><div class="n">${esc(s.common)}</div>
+      <div class="t">${esc((o.taken || "").slice(0, 10))} · <span class="conf-${o.confidence}">${esc(o.confidence)}</span></div>
+    </div></button>`;
+}
+
+// ---- detail sheet --------------------------------------------------------
+// Photo tiles. `secondary` = this species is visible in the shot but isn't its subject,
+// so we label what the photo was actually filed under.
+function shotGrid(list, s, secondary = false) {
+  return `<div class="shots">${list.map(o => {
+    const subject = SP[o.species_id];
+    return `<figure class="shot" style="margin:0">
+      <img loading="lazy" src="thumbs/${esc(o.file)}" data-full="photos/${esc(o.file)}" alt="${esc(s.common)}">
+      <figcaption class="cap">
+        ${secondary
+          ? `<span class="conf" style="color:var(--muted)">filed under ${esc(subject ? subject.common : o.species_id)}</span><br>`
+          : `<span class="conf conf-${o.confidence}">${esc(o.confidence)} confidence</span><br>`}
+        ${esc(o.note || "")}
+        <div style="margin-top:6px;opacity:.75">${esc((o.taken || "").slice(0, 16))}${o.lat ? ` · near ${esc(o.lat)}, ${esc(o.lon)}` : ""}</div>
+      </figcaption>
+    </figure>`;
+  }).join("")}</div>`;
+}
+
+function openSheet(id) {
+  const s = SP[id]; if (!s) return;
+  const shots = byS[id] || [];
+  const also = alsoS[id] || [];
+  const e = badgeOf(s);
+  const sec = (t, inner) => inner ? `<h4 class="sec">${t}</h4>${inner}` : "";
+  const ul = a => a && a.length ? `<ul>${a.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : "";
+
+  const parts = (s.parts || []).length ? `<table>
+      <thead><tr><th>Part</th><th>Use</th><th>When</th><th>How</th></tr></thead>
+      <tbody>${s.parts.map(p => `<tr>
+        <td class="part">${esc(p.part)}</td><td class="use">${esc(p.use)}</td>
+        <td class="season">${esc(p.season)}</td><td>${esc(p.prep)}</td></tr>`).join("")}</tbody></table>`
+    : `<p style="color:var(--muted);margin:0">No edible or usable parts recorded — this one is for recognition only.</p>`;
+
+  $("sheet-content").innerHTML = `
+    <div class="sheet-head">
+      <div>
+        <h2>${esc(s.common)}</h2>
+        <div class="sci">${esc(s.scientific)}</div>
+        <div class="fam">${esc(s.family)} · ${esc(s.kind)} · ${shots.length} photo${shots.length === 1 ? "" : "s"}${
+          also.length ? `, seen in ${also.length} more` : ""} in library</div>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center">
+        <span class="badge ${e.cls}">${e.label}</span>
+        <button class="x" id="closeX" aria-label="Close">×</button>
+      </div>
+    </div>
+    <div class="sheet-body">
+      ${isAuto(s) ? `<div class="newflag"><h4>AI-identified</h4><p>This entry was written
+         automatically from the photo — including the edibility verdict below. Have an adult who
+         knows plants confirm it before anyone eats anything.</p></div>` : ""}
+      ${s.danger ? `<div class="alert"><h4>Handle with care</h4><p style="margin:0">${esc(s.summary)}</p></div>`
+                 : `<p class="summary">${esc(s.summary)}</p>`}
+      ${s.origin_note ? `<p style="margin:0 0 20px;padding:12px 14px;border-left:3px solid var(--line);
+         background:var(--bg);border-radius:0 8px 8px 0;font-size:14px">${esc(s.origin_note)}</p>` : ""}
+      ${sec("Foraging notes (secondary — this is a survey, not a food guide)", parts)}
+      ${sec("How to know it", ul(s.id_marks))}
+      ${sec("Cautions", ul(s.cautions))}
+      ${sec("Lookalikes to rule out", ul(s.lookalikes))}
+      ${shots.length ? sec("Photos", shotGrid(shots, s)) : ""}
+      ${also.length ? sec("Also seen in", `<p style="color:var(--muted);margin:0 0 12px;font-size:13.5px">
+         ${shots.length ? "Photographed as part of another subject" : "No photo of its own yet"} — but visible
+         in ${also.length === 1 ? "this shot" : "these shots"}, so ${also.length === 1 ? "it's" : "they're"}
+         still a record of where and when it was growing.</p>${shotGrid(also, s, true)}`) : ""}
+      ${!shots.length && !also.length ? sec("Photos", `<p style="color:var(--muted);margin:0">No photo of this
+         one yet — it's here as a reference entry, usually because it's a lookalike worth being able to
+         rule out.</p>`) : ""}
+    </div>`;
+
+  $("sheet").showModal();
+  $("sheet").scrollTop = 0; $("sheet-content").scrollTop = 0;
+  $("closeX").onclick = () => $("sheet").close();
+  $("sheet-content").querySelectorAll(".shot img").forEach(img => img.onclick = () => {
+    $("lightbox-img").src = img.dataset.full; $("lightbox").showModal();
+  });
+}
+$("sheet").onclick = e => { if (e.target === $("sheet")) $("sheet").close(); };
+$("lightbox").onclick = () => $("lightbox").close();
+
+// ---- boot ----------------------------------------------------------------
+(function () {
+  const dates = OBS.map(o => (o.taken || "").slice(0, 10)).filter(Boolean).sort();
+  const batches = [...new Set(OBS.map(o => o.batch).filter(Boolean))];
+  $("hdr-sub").textContent = `${OBS.length} photos`
+    + (batches.length === 1 ? ` · ${batches[0]}`
+       : dates.length ? ` · ${dates[0]}${dates.at(-1) !== dates[0] ? "–" + dates.at(-1) : ""}` : "");
+  $("nphotos").textContent = OBS.length;
+  $("gen").textContent = "built " + (DB.generated || "");
+  render();
+})();
+</script>
+</body>
+</html>
