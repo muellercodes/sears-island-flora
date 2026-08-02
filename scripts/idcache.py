@@ -33,6 +33,18 @@ CREATE TABLE IF NOT EXISTS identifications (
     cost_usd      REAL
 );
 CREATE INDEX IF NOT EXISTS idx_identified_at ON identifications(identified_at);
+
+-- Submitted batches, so an interrupted poll can be resumed instead of resubmitted.
+-- A batch can take up to 24 hours; losing the id would mean paying for it twice
+-- and never collecting the first run's results.
+CREATE TABLE IF NOT EXISTS batches (
+    batch_id   TEXT PRIMARY KEY,
+    created_at TEXT,
+    n_requests INTEGER,
+    model      TEXT,
+    region     TEXT,
+    collected  INTEGER DEFAULT 0
+);
 """
 
 # $ per token, for the ledger. Prices as of 2026-08; see scripts/prices.json to override.
@@ -85,3 +97,20 @@ def stats(con):
     ).fetchall()
     return {"count": row[0], "input_tokens": row[1], "output_tokens": row[2],
             "cost_usd": row[3], "first": row[4], "last": row[5], "by_model": models}
+
+
+def record_batch(con, batch_id, n, model, region):
+    con.execute("INSERT OR REPLACE INTO batches (batch_id, created_at, n_requests, model, region, collected)"
+                " VALUES (?,?,?,?,?,0)",
+                (batch_id, datetime.datetime.now().isoformat(timespec="seconds"), n, model, region))
+    con.commit()
+
+
+def open_batches(con):
+    return con.execute("SELECT batch_id, created_at, n_requests, model, region FROM batches "
+                       "WHERE collected = 0 ORDER BY created_at").fetchall()
+
+
+def mark_collected(con, batch_id):
+    con.execute("UPDATE batches SET collected = 1 WHERE batch_id = ?", (batch_id,))
+    con.commit()

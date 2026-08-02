@@ -220,6 +220,29 @@ gh api -X POST repos/OWNER/sears-island-flora/pages -f build_type=workflow
 
 ## Commands
 
+### Batch mode — half price
+
+Identification is not latency-sensitive: a survey does not care whether an answer
+lands in four seconds or four hours. The Batch API halves the price for exactly that
+trade, and combines with prompt caching.
+
+```bash
+.venv/bin/python scripts/identify.py --batch              # submit, wait, apply
+.venv/bin/python scripts/identify.py --batch --no-wait    # submit and walk away
+.venv/bin/python scripts/identify.py --collect            # apply results later
+```
+
+Submitted batch ids are recorded in the cache database, so an interrupted wait is
+resumed with `--collect` rather than resubmitted — a batch may take up to 24 hours,
+and losing the id would mean paying twice and never collecting the first run.
+
+Requests are chunked to stay under the 256 MB per-batch limit (a base64 thumbnail is
+~270 KB, so this matters), and every result is matched by `custom_id` — the photo's
+content hash — because batch results come back in arbitrary order.
+
+Use the synchronous path when you want to watch the first few land; use `--batch`
+for anything bigger.
+
 ### Never paying twice for the same photo
 
 Three layers, all verifiable with `plantdb.py doctor` and the commands below:

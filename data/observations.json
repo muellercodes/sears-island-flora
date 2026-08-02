@@ -294,7 +294,7 @@
   "lon": "-68.689447",
   "batch": "orono",
   "hash": "349dea9394b46bc4",
-  "id_attempts": 1,
+  "id_attempts": 2,
   "identified": "2026-08-02"
  },
  {
@@ -398,24 +398,28 @@
   "file": "1D930DBE-AB51-4C9C-B253-11BB95C03D22.jpg",
   "species_id": "unknown",
   "confidence": "low",
-  "note": "Narrow-leaved basal rosettes on the forest floor \u2014 likely aster or goldenrod seedlings.",
+  "note": "Blurry photo of narrow, lance-shaped, entire, apparently basal/alternate green leaves emerging from leaf litter with moss; no flowers, stem detail, or fruit visible, so identification beyond 'unidentified herbaceous seedlings/rosette leaves' is not supportable. Could be a young aster, hawkweed, goldenrod, or willowherb rosette \u2014 flowers or stem/leaf hairs and arrangement would settle it.",
   "taken": "2026-08-01 18:43:53 +0000",
   "lat": "44.877942",
   "lon": "-68.69035",
   "batch": "orono",
-  "hash": "58e2f2a14fc15c3d"
+  "hash": "58e2f2a14fc15c3d",
+  "id_attempts": 1,
+  "identified": "2026-08-02"
  },
  {
   "id": "41CAB551-5358-4E17-B9ED-8AED87C57747",
   "file": "41CAB551-5358-4E17-B9ED-8AED87C57747.jpg",
   "species_id": "unknown",
   "confidence": "low",
-  "note": "Grass and turf, no distinct subject.",
+  "note": "A downward shot of fine-bladed turf grass with scattered leaf litter and a couple of broad lance-shaped leaves at the right edge (possibly a plantain or aster-family rosette). No inflorescences, ligules, or spikelets are visible, so the grass cannot be taken past family; the broadleaf plants are cut off at the frame edge.",
   "taken": "2026-08-01 18:44:04 +0000",
   "lat": "44.877983",
   "lon": "-68.690317",
   "batch": "orono",
-  "hash": "b678d4f9f9d8120e"
+  "hash": "b678d4f9f9d8120e",
+  "id_attempts": 1,
+  "identified": "2026-08-02"
  },
  {
   "id": "55A164F1-679D-48CE-9668-0030945CD2C3",
@@ -434,12 +438,14 @@
   "file": "31D8EB51-13A8-4BB4-B4E5-A5AF644D482A.jpg",
   "species_id": "unknown",
   "confidence": "low",
-  "note": "Mixed seedlings in leaf litter, including one trifoliate seedling \u2014 treat any unknown 'leaves of three' as poison ivy until proven otherwise.",
+  "note": "A single small woody seedling roughly 15 cm tall on leaf litter, with alternate to sub-opposite, coarsely toothed and shallowly 3-lobed leaves showing yellow rust-like spotting; no flowers, fruit, buds or bark visible and the shot is slightly out of focus, so I can only call it an unidentified woody seedling. Shape is consistent with a maple (Acer, e.g. mountain maple) or a young Rubus/Crataegus; opposite vs. alternate leaf arrangement at the lower nodes and presence of prickles would settle it. Not a good match for anything on the invasive watchlist, though Amur maple (Acer ginnala) seedlings can look similar \u2014 check for a long-lobed, glossy leaf with a winged samara on the parent nearby.",
   "taken": "2026-08-01 18:44:27 +0000",
   "lat": "44.878081",
   "lon": "-68.690261",
   "batch": "orono",
-  "hash": "630214342a3ab251"
+  "hash": "630214342a3ab251",
+  "id_attempts": 1,
+  "identified": "2026-08-02"
  },
  {
   "id": "C1A97314-23DD-477D-AA42-1DA07024422E",

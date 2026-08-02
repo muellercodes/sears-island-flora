@@ -177,6 +177,215 @@ def describe(obs):
     return ". ".join(bits) + "." if bits else "No capture metadata available."
 
 
+def apply_result(r, o, ctx, cached_sid=None):
+    """Turn one model response into survey state. Shared by the sync and batch paths.
+
+    Mutates the observation and, when a genuinely new species is found, the
+    catalogue. Returns (outcome, label) where outcome is "done" | "rejected".
+    Kept in one place so the two paths can never drift into disagreeing about what
+    a result means.
+    """
+    species, by_id, args = ctx["species"], ctx["by_id"], ctx["args"]
+
+    # Screening gate: anything that isn't a vegetation photo never enters the survey.
+    if not r.get("is_survey_photo", True):
+        reason = r.get("rejection_reason") or "not a vegetation photograph"
+        o["species_id"] = "unknown"
+        o["confidence"] = "rejected"
+        o["note"] = f"Screened out: {reason}"
+        o["rejected"] = True
+        o["identified"] = datetime.date.today().isoformat()
+        # Delete the thumbnail. thumbs/ is tracked in git — it's how the deploy
+        # runner gets images — so leaving a screened-out photo there would commit
+        # it to a public repo forever. The original stays in gitignored photos/.
+        thumb_path(o).unlink(missing_ok=True)
+        return "rejected", f"REJECTED — {reason[:60]}"
+
+    # Fungi never get an edible verdict from a photo, whatever came back.
+    if r.get("kind") == "fungus" and r.get("edibility") not in ("toxic", "unknown"):
+        r["edibility"] = "unknown"
+        r["cautions"] = ["Identified from a photograph only — never eat a wild mushroom on a photo ID."] \
+            + (r.get("cautions") or [])
+
+    if cached_sid and (cached_sid in by_id or cached_sid == "unknown"):
+        # Replaying a cached result must resolve to the same species it did the
+        # first time. Without this, a replay re-runs the creation path, finds the
+        # slug taken, and mints a duplicate ("-2") of a species we already have.
+        sid = cached_sid
+        label = f"→ {by_id.get(sid, {}).get('common', sid)}"
+    elif r.get("matches_existing_id") and r["matches_existing_id"] in by_id:
+        sid = r["matches_existing_id"]
+        label = f"→ {by_id[sid]['common']}"
+    elif r.get("kind") == "other" and r.get("confidence") == "low":
+        # A non-answer, not a species. The prompt asks for kind "other" at low
+        # confidence when the photo cannot support an identification — a habitat
+        # shot, a canopy, a seedling with no diagnostic features. Minting a
+        # catalogue entry for that invents a species that does not exist, and the
+        # catalogue is sent with every subsequent photo. Leave it unknown; the
+        # note still records what was missing, which is the useful part.
+        sid = "unknown"
+        label = "unidentifiable from this photo"
+    else:
+        sid = slugify(r.get("common") or "unnamed", set(by_id))
+        entry = {
+            "id": sid,
+            "common": r.get("common") or "Unidentified",
+            "scientific": r.get("scientific") or "—",
+            "family": r.get("family") or "—",
+            "kind": r.get("kind", "other"),
+            "edibility": r.get("edibility", "unknown"),
+            "summary": r.get("summary", ""),
+            "parts": r.get("parts") or [],
+            "id_marks": r.get("id_marks") or [],
+            "cautions": r.get("cautions") or [],
+            "lookalikes": r.get("lookalikes") or [],
+            "origin_status": r.get("origin_status", "unknown"),
+            "source": f"auto ({args.model})",
+        }
+        if r.get("danger"):
+            entry["danger"] = True
+        species.append(entry)
+        by_id[sid] = entry
+        ctx["catalogue"] += f"\n- {sid}: {entry['common']} ({entry['scientific']})"
+        flag = " ** REGULATED **" if entry["origin_status"] == "regulated" else (
+               " * invasive *" if entry["origin_status"] == "invasive" else "")
+        label = f"NEW {entry['common']} [{entry['origin_status']}]{flag}"
+
+    o["species_id"] = sid
+    o["confidence"] = r.get("confidence", "low")
+    o["note"] = r.get("note", "")
+    # When this record's identification was last written. The site shows it so a
+    # reader can tell a fresh ID from one that has sat unrevised.
+    o["identified"] = datetime.date.today().isoformat()
+    also = [x for x in (r.get("also_visible") or []) if x in by_id and x != sid]
+    if also:
+        o["also"] = also
+    return "done", label
+
+
+# --- Batch API -------------------------------------------------------------
+# Identification is not latency-sensitive: a survey does not care whether an answer
+# lands in four seconds or four hours. The Batch API halves the price for exactly
+# that trade. Requests are capped at 256 MB per batch and results come back in any
+# order, so we chunk by real payload size and key every result by custom_id.
+
+BATCH_MAX_BYTES = 200 * 1024 * 1024   # 256 MB hard limit; leave real headroom
+BATCH_MAX_REQUESTS = 5000
+
+
+def build_request(o, ctx):
+    """One batch request. custom_id is the content hash — the photo's real identity."""
+    args = ctx["args"]
+    img = base64.standard_b64encode(thumb_path(o).read_bytes()).decode()
+    return {
+        "custom_id": o["hash"],
+        "params": {
+            "model": args.model,
+            "max_tokens": MAX_TOKENS,
+            "system": [{
+                "type": "text",
+                "text": SYSTEM.format(region=args.region)
+                        + "\n\nSpecies already in this guide — reuse one of these ids if "
+                          f"the photo shows the same organism:\n{ctx['catalogue']}",
+                "cache_control": {"type": "ephemeral"},
+            }],
+            "output_config": {"effort": args.effort,
+                              "format": {"type": "json_schema", "schema": SCHEMA}},
+            "messages": [{"role": "user", "content": [
+                {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": img}},
+                {"type": "text", "text": f"{describe(o)}\n\nIdentify the main plant or fungus in this photograph."},
+            ]}],
+        },
+    }
+
+
+def chunk_requests(reqs):
+    """Split on the 256 MB ceiling. A base64 thumbnail is ~270 KB, so this bites."""
+    out, cur, size = [], [], 0
+    for r in reqs:
+        n = len(json.dumps(r))
+        if cur and (size + n > BATCH_MAX_BYTES or len(cur) >= BATCH_MAX_REQUESTS):
+            out.append(cur); cur, size = [], 0
+        cur.append(r); size += n
+    if cur:
+        out.append(cur)
+    return out
+
+
+def submit_batches(client, pending, ctx, cache):
+    args = ctx["args"]
+    reqs = [build_request(o, ctx) for o in pending if o.get("hash")]
+    chunks = chunk_requests(reqs)
+    ids = []
+    for n, chunk in enumerate(chunks, 1):
+        b = client.messages.batches.create(requests=chunk)
+        idcache.record_batch(cache, b.id, len(chunk), args.model, args.region)
+        ids.append(b.id)
+        print(f"  submitted batch {n}/{len(chunks)}: {b.id}  ({len(chunk)} photos)")
+    return ids
+
+
+def collect_batch(client, batch_id, obs, ctx, cache, counters):
+    """Apply one finished batch. Results arrive in any order — key by custom_id."""
+    by_hash = {o["hash"]: o for o in obs if o.get("hash")}
+    for res in client.messages.batches.results(batch_id):
+        o = by_hash.get(res.custom_id)
+        if o is None:
+            print(f"  ! result for an unknown photo ({res.custom_id}) — skipped")
+            continue
+        kind = res.result.type
+        if kind != "succeeded":
+            err = getattr(getattr(res.result, "error", None), "type", kind)
+            print(f"  ! {o['file']}: {kind} ({err})")
+            counters["failed"] += 1
+            continue
+        msg = res.result.message
+        if msg.stop_reason in ("refusal", "max_tokens"):
+            print(f"  ! {o['file']}: {msg.stop_reason}")
+            counters["failed"] += 1
+            continue
+        text = next((b.text for b in msg.content if b.type == "text"), None)
+        if not text:
+            counters["failed"] += 1
+            continue
+        try:
+            r = json.loads(text)
+        except json.JSONDecodeError:
+            print(f"  ! {o['file']}: unparseable response")
+            counters["failed"] += 1
+            continue
+        outcome, label = apply_result(r, o, ctx)
+        idcache.put(cache, o["hash"], o["file"], r, ctx["args"].model, ctx["args"].region,
+                    msg.usage, species_id=o["species_id"])
+        u = msg.usage
+        counters["in"] += u.input_tokens or 0
+        counters["out"] += u.output_tokens or 0
+        counters[outcome] += 1
+        print(f"  {o['file']}: {label}")
+    idcache.mark_collected(cache, batch_id)
+
+
+def wait_for(client, batch_ids, poll=30):
+    """Block until every batch has ended, reporting progress as it goes."""
+    import time
+    remaining = list(batch_ids)
+    while remaining:
+        still = []
+        for bid in remaining:
+            b = client.messages.batches.retrieve(bid)
+            if b.processing_status == "ended":
+                c = b.request_counts
+                print(f"  {bid}: ended  ({c.succeeded} ok, {c.errored} errored, {c.expired} expired)")
+            else:
+                still.append(bid)
+                c = b.request_counts
+                print(f"  {bid}: {b.processing_status}  ({c.processing} processing, {c.succeeded} done)")
+        remaining = still
+        if remaining:
+            time.sleep(poll)
+    return True
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--limit", type=int, help="only do this many (good for a first test)")
@@ -186,6 +395,12 @@ def main():
                     help="stop retrying a photo after this many identification attempts (0 = no cap)")
     ap.add_argument("--retry-exhausted", action="store_true",
                     help="ignore --max-attempts and retry photos that have hit the cap")
+    ap.add_argument("--batch", action="store_true",
+                    help="use the Batch API: half price, results within hours not seconds")
+    ap.add_argument("--no-wait", action="store_true",
+                    help="with --batch, submit and exit; collect later with --collect")
+    ap.add_argument("--collect", action="store_true",
+                    help="apply results from batches already submitted")
     ap.add_argument("--ignore-cache", action="store_true",
                     help="re-identify even photos already in the cache (costs money again)")
     ap.add_argument("--model", default=MODEL)
@@ -220,7 +435,7 @@ def main():
         if spent:
             print(f"Skipping {len(spent)} photo(s) already attempted {args.max_attempts}x "
                   f"(--retry-exhausted to force, --max-attempts to change).")
-    if not pending:
+    if not pending and not args.collect:
         print("Nothing awaiting identification."
               + ("" if args.all_unknown else "  (--all-unknown to retry the hand-flagged ones)"))
         return
@@ -237,6 +452,75 @@ def main():
     done = failed = rejected = reused = 0
     spend = {"in": 0, "out": 0, "cache_read": 0, "cache_write": 0}
     cache = idcache.connect()
+    ctx = {"species": species, "by_id": by_id, "catalogue": catalogue, "args": args}
+
+    # --- collect: apply results from batches submitted on an earlier run ---
+    if args.collect:
+        opens = idcache.open_batches(cache)
+        if not opens:
+            print("No batches awaiting collection.")
+            return
+        counters = {"done": 0, "rejected": 0, "failed": 0, "in": 0, "out": 0}
+        for bid, created, n, model, region in opens:
+            b = client.messages.batches.retrieve(bid)
+            if b.processing_status != "ended":
+                print(f"{bid}: still {b.processing_status} — try again later.")
+                continue
+            print(f"Collecting {bid} ({n} photos, submitted {created}):")
+            collect_batch(client, bid, obs, ctx, cache, counters)
+            save(SPECIES_F, ctx["species"])
+            save_obs(obs)
+        cin, cout = idcache.PRICES.get(args.model, (0.0, 0.0))
+        cost = (counters["in"] * cin + counters["out"] * cout) * 0.5   # batch is half price
+        print(f"\nCollected {counters['done']} identified, {counters['rejected']} screened out, "
+              f"{counters['failed']} failed.")
+        if counters["in"]:
+            print(f"{counters['in']:,} in / {counters['out']:,} out  =  ${cost:.2f} (batch rate)")
+        print("Rebuild and publish:  python3 scripts/plantdb.py publish")
+        return
+
+    # --- batch: submit everything at once for half price ---
+    if args.batch:
+        fresh_pending = []
+        for o in pending:
+            hit = idcache.get(cache, o.get("hash"))
+            if hit is not None and not args.ignore_cache:
+                apply_result(hit["result"], o, ctx, hit.get("species_id"))
+                reused += 1
+            elif not o.get("hash"):
+                print(f"  ! {o['file']}: no content hash, cannot batch — run without --batch")
+            else:
+                o["id_attempts"] = o.get("id_attempts", 0) + 1
+                fresh_pending.append(o)
+        if reused:
+            save(SPECIES_F, ctx["species"]); save_obs(obs)
+            print(f"Applied {reused} cached result(s) with no API call.")
+        if not fresh_pending:
+            print("Nothing left to submit.")
+            return
+        print(f"\nSubmitting {len(fresh_pending)} photo(s) to the Batch API (half price)...")
+        ids = submit_batches(client, fresh_pending, ctx, cache)
+        save_obs(obs)
+        if args.no_wait:
+            print(f"\n{len(ids)} batch(es) submitted. Collect when ready:")
+            print("  .venv/bin/python scripts/identify.py --collect")
+            return
+        print("\nWaiting for results (usually well under an hour; up to 24h is allowed).")
+        print("Safe to interrupt — resume with:  identify.py --collect\n")
+        wait_for(client, ids)
+        counters = {"done": 0, "rejected": 0, "failed": 0, "in": 0, "out": 0}
+        for bid in ids:
+            print(f"\nCollecting {bid}:")
+            collect_batch(client, bid, obs, ctx, cache, counters)
+            save(SPECIES_F, ctx["species"]); save_obs(obs)
+        cin, cout = idcache.PRICES.get(args.model, (0.0, 0.0))
+        cost = (counters["in"] * cin + counters["out"] * cout) * 0.5
+        print(f"\nIdentified {counters['done']}, reused from cache {reused}, "
+              f"screened out {counters['rejected']}, failed {counters['failed']}.")
+        if counters["in"]:
+            print(f"{counters['in']:,} in / {counters['out']:,} out  =  ${cost:.2f} (batch rate, 50% off)")
+        print("Rebuild and publish:  python3 scripts/plantdb.py publish")
+        return
     for i, o in enumerate(pending, 1):
         thumb = thumb_path(o)
         if not thumb.exists():
@@ -276,7 +560,7 @@ def main():
                         "type": "text",
                         "text": SYSTEM.format(region=args.region)
                                 + "\n\nSpecies already in this guide — reuse one of these ids if "
-                                  f"the photo shows the same organism:\n{catalogue}",
+                                  f"the photo shows the same organism:\n{ctx['catalogue']}",
                         "cache_control": {"type": "ephemeral"},
                     }],
                     output_config={
@@ -315,87 +599,17 @@ def main():
             spend["cache_read"] += getattr(u, "cache_read_input_tokens", 0) or 0
             spend["cache_write"] += getattr(u, "cache_creation_input_tokens", 0) or 0
 
-        # Screening gate: anything that isn't a vegetation photo never enters the survey.
-        if not r.get("is_survey_photo", True):
-            reason = r.get("rejection_reason") or "not a vegetation photograph"
-            o["species_id"] = "unknown"
-            o["confidence"] = "rejected"
-            o["note"] = f"Screened out: {reason}"
-            o["rejected"] = True
-            o["identified"] = datetime.date.today().isoformat()
-            # Delete the thumbnail. thumbs/ is tracked in git — it's how the deploy
-            # runner gets images — so leaving a screened-out photo there would commit
-            # it to a public repo forever. The original stays in gitignored photos/.
-            thumb.unlink(missing_ok=True)
+        outcome, label = apply_result(r, o, ctx, cached_sid)
+        if outcome == "rejected":
             rejected += 1
-            print(f"  [{i}/{len(pending)}] {o['file']}: REJECTED — {reason[:60]}")
+            print(f"  [{i}/{len(pending)}] {o['file']}: {label}")
             save_obs(obs)
             continue
-
-        # Fungi never get an edible verdict from a photo, whatever came back.
-        if r["kind"] == "fungus" and r["edibility"] not in ("toxic", "unknown"):
-            r["edibility"] = "unknown"
-            r["cautions"] = ["Identified from a photograph only — never eat a wild mushroom on a photo ID."] \
-                + r.get("cautions", [])
-
-        if cached_sid and (cached_sid in by_id or cached_sid == "unknown"):
-            # Replaying a cached result must resolve to the same species it did the
-            # first time. Without this, a replay re-runs the creation path, finds the
-            # slug taken, and mints a duplicate ("-2") of a species we already have.
-            sid = cached_sid
-            label = f"→ {by_id.get(sid, {}).get('common', sid)}"
-        elif r["matches_existing_id"] and r["matches_existing_id"] in by_id:
-            sid = r["matches_existing_id"]
-            label = f"→ {by_id[sid]['common']}"
-        elif r["kind"] == "other" and r["confidence"] == "low":
-            # A non-answer, not a species. The prompt asks for kind "other" at low
-            # confidence when the photo cannot support an identification — a habitat
-            # shot, a canopy, a seedling with no diagnostic features. Minting a
-            # catalogue entry for that invents a species that does not exist, and the
-            # catalogue is sent with every subsequent photo. Leave it unknown; the
-            # note still records what was missing, which is the useful part.
-            sid = "unknown"
-            label = "unidentifiable from this photo"
-        else:
-            sid = slugify(r["common"] or "unnamed", set(by_id))
-            entry = {
-                "id": sid,
-                "common": r["common"] or "Unidentified",
-                "scientific": r["scientific"] or "—",
-                "family": r["family"] or "—",
-                "kind": r["kind"],
-                "edibility": r["edibility"],
-                "summary": r["summary"],
-                "parts": r["parts"],
-                "id_marks": r["id_marks"],
-                "cautions": r["cautions"],
-                "lookalikes": r["lookalikes"],
-                "origin_status": r.get("origin_status", "unknown"),
-                "source": f"auto ({args.model})",
-            }
-            if r["danger"]:
-                entry["danger"] = True
-            species.append(entry)
-            by_id[sid] = entry
-            catalogue += f"\n- {sid}: {entry['common']} ({entry['scientific']})"
-            flag = " ** REGULATED **" if entry["origin_status"] == "regulated" else (
-                   " * invasive *" if entry["origin_status"] == "invasive" else "")
-            label = f"NEW {entry['common']} [{entry['origin_status']}]{flag}"
-
         if cached_sid is None:
             idcache.put(cache, o.get("hash"), o["file"], r, args.model, args.region,
-                        fresh, species_id=sid)
-        o["species_id"] = sid
-        o["confidence"] = r["confidence"]
-        o["note"] = r["note"]
-        # When this record's identification was last written. The site shows it so a
-        # reader can tell a fresh ID from one that has sat unrevised.
-        o["identified"] = datetime.date.today().isoformat()
-        also = [x for x in r.get("also_visible", []) if x in by_id and x != sid]
-        if also:
-            o["also"] = also
+                        fresh, species_id=o["species_id"])
         done += 1
-        print(f"  [{i}/{len(pending)}] {o['file']}: {label}  [{r['confidence']}]")
+        print(f"  [{i}/{len(pending)}] {o['file']}: {label}  [{r.get('confidence')}]")
 
         save(SPECIES_F, species)   # save as we go — a crash never loses completed work
         save_obs(obs)
