@@ -1,42 +1,15 @@
 [
  {
-  "id": "05D7477B-0826-448B-A319-A52718F326DE",
-  "file": "05D7477B-0826-448B-A319-A52718F326DE.jpg",
-  "species_id": "white-clover",
+  "id": "B51E4DCA-3029-4005-B8AE-F1B1C434EDD0",
+  "file": "B51E4DCA-3029-4005-B8AE-F1B1C434EDD0.jpg",
+  "species_id": "common-ragweed",
   "confidence": "medium",
-  "note": "Mixed roadside turf \u2014 white clover with feathery yarrow foliage woven through it.",
-  "taken": "2026-08-01 18:56:35 +0000",
-  "lat": "44.875575",
-  "lon": "-68.687667",
+  "note": "Young plant on the gravel shoulder, fern-like dissected leaves, not yet in flower.",
+  "taken": "2026-08-01 18:30:47 +0000",
+  "lat": "44.8754",
+  "lon": "-68.687392",
   "batch": "orono",
-  "hash": "6e1ef67383ecbfdc",
-  "also": [
-   "yarrow"
-  ]
- },
- {
-  "id": "1673DE38-1B74-4A66-8387-8B03264A0980",
-  "file": "1673DE38-1B74-4A66-8387-8B03264A0980.jpg",
-  "species_id": "dandelion",
-  "confidence": "high",
-  "note": "Basal rosette with backward-pointing teeth; self-heal flowering behind.",
-  "taken": "2026-08-01 18:56:27 +0000",
-  "lat": "44.875567",
-  "lon": "-68.687675",
-  "batch": "orono",
-  "hash": "cf803cb57bdfc3ed"
- },
- {
-  "id": "5E9EFA71-6B8C-48A8-9F1D-DE7EA118B4BE",
-  "file": "5E9EFA71-6B8C-48A8-9F1D-DE7EA118B4BE.jpg",
-  "species_id": "buttercup",
-  "confidence": "medium",
-  "note": "Dense mat of deeply cut palmate leaves; no flowers open in frame.",
-  "taken": "2026-08-01 18:56:13 +0000",
-  "lat": "44.875572",
-  "lon": "-68.687683",
-  "batch": "orono",
-  "hash": "6c0b7469e70c6bdf"
+  "hash": "86b94ce10a72c7d5"
  },
  {
   "id": "20BA635E-7134-4880-B241-4F4E461B0A70",
@@ -51,18 +24,6 @@
   "hash": "3853b65db0c77853"
  },
  {
-  "id": "B51E4DCA-3029-4005-B8AE-F1B1C434EDD0",
-  "file": "B51E4DCA-3029-4005-B8AE-F1B1C434EDD0.jpg",
-  "species_id": "common-ragweed",
-  "confidence": "medium",
-  "note": "Young plant on the gravel shoulder, fern-like dissected leaves, not yet in flower.",
-  "taken": "2026-08-01 18:30:47 +0000",
-  "lat": "44.8754",
-  "lon": "-68.687392",
-  "batch": "orono",
-  "hash": "86b94ce10a72c7d5"
- },
- {
   "id": "C7614B3D-F262-4363-8646-9C1D99718338",
   "file": "C7614B3D-F262-4363-8646-9C1D99718338.jpg",
   "species_id": "gray-dogwood",
@@ -75,16 +36,16 @@
   "hash": "6b92a48f093c545b"
  },
  {
-  "id": "0AB7B993-95BC-4127-B449-BD63184E5E92",
-  "file": "0AB7B993-95BC-4127-B449-BD63184E5E92.jpg",
-  "species_id": "jewelweed",
+  "id": "A6F8EA4E-89E4-4763-96CE-56DF176A52FF",
+  "file": "A6F8EA4E-89E4-4763-96CE-56DF176A52FF.jpg",
+  "species_id": "broadleaf-plantain",
   "confidence": "high",
-  "note": "Orange spotted horn-shaped flowers; Virginia creeper mixed in at lower left.",
-  "taken": "2026-08-01 18:32:08 +0000",
-  "lat": "44.875519",
-  "lon": "-68.687608",
+  "note": "Textbook rosette with heavy parallel veins; seed spike visible top right.",
+  "taken": "2026-08-01 18:31:48 +0000",
+  "lat": "44.875056",
+  "lon": "-68.686367",
   "batch": "orono",
-  "hash": "70a4f2ae9f88e791"
+  "hash": "de723a097964c1b5"
  },
  {
   "id": "39DEC7BB-15E3-4332-89D5-ED2752C1FF45",
@@ -99,16 +60,16 @@
   "hash": "d0b56d66cf2c60f3"
  },
  {
-  "id": "A6F8EA4E-89E4-4763-96CE-56DF176A52FF",
-  "file": "A6F8EA4E-89E4-4763-96CE-56DF176A52FF.jpg",
-  "species_id": "broadleaf-plantain",
+  "id": "0AB7B993-95BC-4127-B449-BD63184E5E92",
+  "file": "0AB7B993-95BC-4127-B449-BD63184E5E92.jpg",
+  "species_id": "jewelweed",
   "confidence": "high",
-  "note": "Textbook rosette with heavy parallel veins; seed spike visible top right.",
-  "taken": "2026-08-01 18:31:48 +0000",
-  "lat": "44.875056",
-  "lon": "-68.686367",
+  "note": "Orange spotted horn-shaped flowers; Virginia creeper mixed in at lower left.",
+  "taken": "2026-08-01 18:32:08 +0000",
+  "lat": "44.875519",
+  "lon": "-68.687608",
   "batch": "orono",
-  "hash": "de723a097964c1b5"
+  "hash": "70a4f2ae9f88e791"
  },
  {
   "id": "8DB2F080-62AA-4F26-8F8F-AD2B6925DC18",
@@ -195,16 +156,16 @@
   "hash": "696880e493d5242d"
  },
  {
-  "id": "228945D4-D7CC-43A5-9F0B-0AEA4038E2A7",
-  "file": "228945D4-D7CC-43A5-9F0B-0AEA4038E2A7.jpg",
-  "species_id": "ash-sapling",
-  "confidence": "medium",
-  "note": "Opposite compound leaves; ferns and a mature trunk behind.",
-  "taken": "2026-08-01 18:34:46 +0000",
-  "lat": "44.876417",
-  "lon": "-68.688272",
+  "id": "8B2615E1-DA8B-483E-A21E-EC9FF8EC755B",
+  "file": "8B2615E1-DA8B-483E-A21E-EC9FF8EC755B.jpg",
+  "species_id": "bush-honeysuckle-invasive",
+  "confidence": "high",
+  "note": "Checked at full resolution: leaves are opposite, simple and untoothed \u2014 honeysuckle, NOT poison ivy.",
+  "taken": "2026-08-01 18:34:06 +0000",
+  "lat": "44.876233",
+  "lon": "-68.688028",
   "batch": "orono",
-  "hash": "c4eea43702e78677"
+  "hash": "e0466944836d619a"
  },
  {
   "id": "297F5D45-0DC0-4A61-B549-E28865B3F1A5",
@@ -219,28 +180,16 @@
   "hash": "0d56568f03e2840b"
  },
  {
-  "id": "8B2615E1-DA8B-483E-A21E-EC9FF8EC755B",
-  "file": "8B2615E1-DA8B-483E-A21E-EC9FF8EC755B.jpg",
-  "species_id": "bush-honeysuckle-invasive",
-  "confidence": "high",
-  "note": "Checked at full resolution: leaves are opposite, simple and untoothed \u2014 honeysuckle, NOT poison ivy.",
-  "taken": "2026-08-01 18:34:06 +0000",
-  "lat": "44.876233",
-  "lon": "-68.688028",
+  "id": "228945D4-D7CC-43A5-9F0B-0AEA4038E2A7",
+  "file": "228945D4-D7CC-43A5-9F0B-0AEA4038E2A7.jpg",
+  "species_id": "ash-sapling",
+  "confidence": "medium",
+  "note": "Opposite compound leaves; ferns and a mature trunk behind.",
+  "taken": "2026-08-01 18:34:46 +0000",
+  "lat": "44.876417",
+  "lon": "-68.688272",
   "batch": "orono",
-  "hash": "e0466944836d619a"
- },
- {
-  "id": "0B8C2A95-836C-45BA-91A6-987138E1E3BC",
-  "file": "0B8C2A95-836C-45BA-91A6-987138E1E3BC.jpg",
-  "species_id": "rubus",
-  "confidence": "high",
-  "note": "Leaflets in 3s and 5s, sharply toothed \u2014 bramble patch.",
-  "taken": "2026-08-01 18:35:18 +0000",
-  "lat": "44.876469",
-  "lon": "-68.688392",
-  "batch": "orono",
-  "hash": "0b8a070a351caa24"
+  "hash": "c4eea43702e78677"
  },
  {
   "id": "2C52F783-C983-4872-8E8F-052AAFC88BC0",
@@ -267,6 +216,18 @@
   "hash": "fbe5f4a0333c42a9"
  },
  {
+  "id": "0B8C2A95-836C-45BA-91A6-987138E1E3BC",
+  "file": "0B8C2A95-836C-45BA-91A6-987138E1E3BC.jpg",
+  "species_id": "rubus",
+  "confidence": "high",
+  "note": "Leaflets in 3s and 5s, sharply toothed \u2014 bramble patch.",
+  "taken": "2026-08-01 18:35:18 +0000",
+  "lat": "44.876469",
+  "lon": "-68.688392",
+  "batch": "orono",
+  "hash": "0b8a070a351caa24"
+ },
+ {
   "id": "A9799703-7CC9-4B7C-A913-B08298BCB135",
   "file": "A9799703-7CC9-4B7C-A913-B08298BCB135.jpg",
   "species_id": "mountain-ash",
@@ -291,16 +252,16 @@
   "hash": "a57db24b3713ab3d"
  },
  {
-  "id": "1F99713B-7473-4397-8202-1209D0F1C621",
-  "file": "1F99713B-7473-4397-8202-1209D0F1C621.jpg",
+  "id": "CDC68EA0-53C5-4080-B382-DB94E87F912E",
+  "file": "CDC68EA0-53C5-4080-B382-DB94E87F912E.jpg",
   "species_id": "unknown",
   "confidence": "low",
-  "note": "Hardwood canopy looking up \u2014 habitat context.",
-  "taken": "2026-08-01 18:37:40 +0000",
-  "lat": "44.876514",
-  "lon": "-68.689447",
+  "note": "Small heart-leaved seedling on the forest floor; too young to name.",
+  "taken": "2026-08-01 18:36:25 +0000",
+  "lat": "44.876508",
+  "lon": "-68.689008",
   "batch": "orono",
-  "hash": "349dea9394b46bc4"
+  "hash": "b73950cf0e56033c"
  },
  {
   "id": "759435CF-F8AE-48AF-A0AD-D3CE51FAE0C3",
@@ -315,16 +276,16 @@
   "hash": "bdd2e2f35d145bb7"
  },
  {
-  "id": "CDC68EA0-53C5-4080-B382-DB94E87F912E",
-  "file": "CDC68EA0-53C5-4080-B382-DB94E87F912E.jpg",
+  "id": "1F99713B-7473-4397-8202-1209D0F1C621",
+  "file": "1F99713B-7473-4397-8202-1209D0F1C621.jpg",
   "species_id": "unknown",
   "confidence": "low",
-  "note": "Small heart-leaved seedling on the forest floor; too young to name.",
-  "taken": "2026-08-01 18:36:25 +0000",
-  "lat": "44.876508",
-  "lon": "-68.689008",
+  "note": "Hardwood canopy looking up \u2014 habitat context.",
+  "taken": "2026-08-01 18:37:40 +0000",
+  "lat": "44.876514",
+  "lon": "-68.689447",
   "batch": "orono",
-  "hash": "b73950cf0e56033c"
+  "hash": "349dea9394b46bc4"
  },
  {
   "id": "0A05CA61-3B64-4E0B-8144-22ABC6809EF4",
@@ -339,18 +300,6 @@
   "hash": "bcdcfe6e0ca4e141"
  },
  {
-  "id": "3E3D65BF-6FE6-44F6-A428-20B266D5C8A6",
-  "file": "3E3D65BF-6FE6-44F6-A428-20B266D5C8A6.jpg",
-  "species_id": "bolete-unknown",
-  "confidence": "low",
-  "note": "Orange-brown cap in leaf litter. Underside never photographed \u2014 unidentifiable, and therefore not food.",
-  "taken": "2026-08-01 18:40:55 +0000",
-  "lat": "44.876969",
-  "lon": "-68.6897",
-  "batch": "orono",
-  "hash": "d621c50a6b255d55"
- },
- {
   "id": "E832BD2D-720D-42BA-97F6-9A624DD81B4C",
   "file": "E832BD2D-720D-42BA-97F6-9A624DD81B4C.jpg",
   "species_id": "polypore-weathered",
@@ -361,6 +310,18 @@
   "lon": "-68.689664",
   "batch": "orono",
   "hash": "849b22dedc5b4707"
+ },
+ {
+  "id": "3E3D65BF-6FE6-44F6-A428-20B266D5C8A6",
+  "file": "3E3D65BF-6FE6-44F6-A428-20B266D5C8A6.jpg",
+  "species_id": "bolete-unknown",
+  "confidence": "low",
+  "note": "Orange-brown cap in leaf litter. Underside never photographed \u2014 unidentifiable, and therefore not food.",
+  "taken": "2026-08-01 18:40:55 +0000",
+  "lat": "44.876969",
+  "lon": "-68.6897",
+  "batch": "orono",
+  "hash": "d621c50a6b255d55"
  },
  {
   "id": "762C97CA-88AB-4762-A23B-0A993DA436FC",
@@ -387,6 +348,18 @@
   "hash": "5387165de92d8122"
  },
  {
+  "id": "1444D5EC-F232-478F-9C6F-E4377B712395",
+  "file": "1444D5EC-F232-478F-9C6F-E4377B712395.jpg",
+  "species_id": "pipsissewa",
+  "confidence": "medium",
+  "note": "Whorls of glossy leathery evergreen leaves on a mossy hummock in oak duff.",
+  "taken": "2026-08-01 18:42:42 +0000",
+  "lat": "44.877369",
+  "lon": "-68.690356",
+  "batch": "orono",
+  "hash": "0ce1d340e5bbac39"
+ },
+ {
   "id": "05EF72B5-D8A9-4701-A197-973C55645ED6",
   "file": "05EF72B5-D8A9-4701-A197-973C55645ED6.jpg",
   "species_id": "christmas-fern",
@@ -399,16 +372,16 @@
   "hash": "5f9392e7215b3dc8"
  },
  {
-  "id": "1444D5EC-F232-478F-9C6F-E4377B712395",
-  "file": "1444D5EC-F232-478F-9C6F-E4377B712395.jpg",
-  "species_id": "pipsissewa",
-  "confidence": "medium",
-  "note": "Whorls of glossy leathery evergreen leaves on a mossy hummock in oak duff.",
-  "taken": "2026-08-01 18:42:42 +0000",
-  "lat": "44.877369",
-  "lon": "-68.690356",
+  "id": "4314D62A-B2A1-420A-A750-371C57043C17",
+  "file": "4314D62A-B2A1-420A-A750-371C57043C17.jpg",
+  "species_id": "eastern-hemlock",
+  "confidence": "high",
+  "note": "Young hemlock \u2014 short flat needles in flat sprays.",
+  "taken": "2026-08-01 18:43:02 +0000",
+  "lat": "44.877394",
+  "lon": "-68.690372",
   "batch": "orono",
-  "hash": "0ce1d340e5bbac39"
+  "hash": "e9fe37c269406719"
  },
  {
   "id": "1D930DBE-AB51-4C9C-B253-11BB95C03D22",
@@ -435,16 +408,16 @@
   "hash": "b678d4f9f9d8120e"
  },
  {
-  "id": "4314D62A-B2A1-420A-A750-371C57043C17",
-  "file": "4314D62A-B2A1-420A-A750-371C57043C17.jpg",
-  "species_id": "eastern-hemlock",
+  "id": "55A164F1-679D-48CE-9668-0030945CD2C3",
+  "file": "55A164F1-679D-48CE-9668-0030945CD2C3.jpg",
+  "species_id": "sensitive-fern",
   "confidence": "high",
-  "note": "Young hemlock \u2014 short flat needles in flat sprays.",
-  "taken": "2026-08-01 18:43:02 +0000",
-  "lat": "44.877394",
-  "lon": "-68.690372",
+  "note": "Broad wavy-margined leaflets joined by a winged rachis \u2014 unmistakable.",
+  "taken": "2026-08-01 18:44:13 +0000",
+  "lat": "44.878014",
+  "lon": "-68.690308",
   "batch": "orono",
-  "hash": "e9fe37c269406719"
+  "hash": "a86bc393aa260112"
  },
  {
   "id": "31D8EB51-13A8-4BB4-B4E5-A5AF644D482A",
@@ -459,16 +432,16 @@
   "hash": "630214342a3ab251"
  },
  {
-  "id": "55A164F1-679D-48CE-9668-0030945CD2C3",
-  "file": "55A164F1-679D-48CE-9668-0030945CD2C3.jpg",
-  "species_id": "sensitive-fern",
-  "confidence": "high",
-  "note": "Broad wavy-margined leaflets joined by a winged rachis \u2014 unmistakable.",
-  "taken": "2026-08-01 18:44:13 +0000",
-  "lat": "44.878014",
-  "lon": "-68.690308",
+  "id": "C1A97314-23DD-477D-AA42-1DA07024422E",
+  "file": "C1A97314-23DD-477D-AA42-1DA07024422E.jpg",
+  "species_id": "unknown",
+  "confidence": "low",
+  "note": "Whorl of lance-shaped leaves \u2014 possibly Indian cucumber-root, possibly a young aster. Not confident enough to call.",
+  "taken": "2026-08-01 18:44:43 +0000",
+  "lat": "44.878181",
+  "lon": "-68.690256",
   "batch": "orono",
-  "hash": "a86bc393aa260112"
+  "hash": "70aa9c67fafe4ed8"
  },
  {
   "id": "474804F5-80D2-4179-885F-624E0CA975D1",
@@ -495,30 +468,6 @@
   "hash": "1b5de0032cae6cb3"
  },
  {
-  "id": "C1A97314-23DD-477D-AA42-1DA07024422E",
-  "file": "C1A97314-23DD-477D-AA42-1DA07024422E.jpg",
-  "species_id": "unknown",
-  "confidence": "low",
-  "note": "Whorl of lance-shaped leaves \u2014 possibly Indian cucumber-root, possibly a young aster. Not confident enough to call.",
-  "taken": "2026-08-01 18:44:43 +0000",
-  "lat": "44.878181",
-  "lon": "-68.690256",
-  "batch": "orono",
-  "hash": "70aa9c67fafe4ed8"
- },
- {
-  "id": "6921566C-3E7A-4548-A238-37DD7D2E5EA2",
-  "file": "6921566C-3E7A-4548-A238-37DD7D2E5EA2.jpg",
-  "species_id": "unknown",
-  "confidence": "low",
-  "note": "Once-pinnate fern with coarsely toothed leaflets \u2014 sensitive or marsh fern. Not edible either way.",
-  "taken": "2026-08-01 18:47:21 +0000",
-  "lat": "44.878322",
-  "lon": "-68.689286",
-  "batch": "orono",
-  "hash": "f5b35f78f3523177"
- },
- {
   "id": "73688D1E-D254-4B48-805E-290D7D3274BA",
   "file": "73688D1E-D254-4B48-805E-290D7D3274BA.jpg",
   "species_id": "bush-honeysuckle-invasive",
@@ -543,16 +492,16 @@
   "hash": "36078d814522f687"
  },
  {
-  "id": "E7D87E6B-62A0-4C7D-BBD3-6572F962EB5E",
-  "file": "E7D87E6B-62A0-4C7D-BBD3-6572F962EB5E.jpg",
-  "species_id": "goldenrod",
-  "confidence": "high",
-  "note": "Full bloom \u2014 this is the harvest stage for tea.",
-  "taken": "2026-08-01 18:48:22 +0000",
-  "lat": "44.878186",
-  "lon": "-68.689022",
+  "id": "6921566C-3E7A-4548-A238-37DD7D2E5EA2",
+  "file": "6921566C-3E7A-4548-A238-37DD7D2E5EA2.jpg",
+  "species_id": "unknown",
+  "confidence": "low",
+  "note": "Once-pinnate fern with coarsely toothed leaflets \u2014 sensitive or marsh fern. Not edible either way.",
+  "taken": "2026-08-01 18:47:21 +0000",
+  "lat": "44.878322",
+  "lon": "-68.689286",
   "batch": "orono",
-  "hash": "5cc2aa3cc4023271"
+  "hash": "f5b35f78f3523177"
  },
  {
   "id": "F9865CB4-B49F-43BA-AE5B-08FEFFFA19B6",
@@ -567,16 +516,16 @@
   "hash": "4c356bd6b33e5a2b"
  },
  {
-  "id": "8D2A5EC5-2FB6-4D0A-9262-7A2CF73631EC",
-  "file": "8D2A5EC5-2FB6-4D0A-9262-7A2CF73631EC.jpg",
-  "species_id": "poison-ivy",
+  "id": "E7D87E6B-62A0-4C7D-BBD3-6572F962EB5E",
+  "file": "E7D87E6B-62A0-4C7D-BBD3-6572F962EB5E.jpg",
+  "species_id": "goldenrod",
   "confidence": "high",
-  "note": "CONFIRMED at full resolution: three leaflets, terminal leaflet on a long stalk, side leaflets lobed on the outer edge only, alternate on a woody stem. Note where this is \u2014 sunny field edge.",
-  "taken": "2026-08-01 18:49:08 +0000",
-  "lat": "44.878133",
-  "lon": "-68.688967",
+  "note": "Full bloom \u2014 this is the harvest stage for tea.",
+  "taken": "2026-08-01 18:48:22 +0000",
+  "lat": "44.878186",
+  "lon": "-68.689022",
   "batch": "orono",
-  "hash": "aea770944722203d"
+  "hash": "5cc2aa3cc4023271"
  },
  {
   "id": "A138B2D7-2B53-42A0-AEA2-1413FE5FA3A5",
@@ -603,16 +552,28 @@
   "hash": "75b191c31b3854d7"
  },
  {
-  "id": "28FBE830-6E4D-49EB-81D7-DC220C6E55D6",
-  "file": "28FBE830-6E4D-49EB-81D7-DC220C6E55D6.jpg",
-  "species_id": "aspen",
-  "confidence": "medium",
-  "note": "Round wavy-toothed leaves of a sucker patch; pinnate leaves of another plant lower left.",
-  "taken": "2026-08-01 18:50:49 +0000",
-  "lat": "44.87745",
-  "lon": "-68.687911",
+  "id": "8D2A5EC5-2FB6-4D0A-9262-7A2CF73631EC",
+  "file": "8D2A5EC5-2FB6-4D0A-9262-7A2CF73631EC.jpg",
+  "species_id": "poison-ivy",
+  "confidence": "high",
+  "note": "CONFIRMED at full resolution: three leaflets, terminal leaflet on a long stalk, side leaflets lobed on the outer edge only, alternate on a woody stem. Note where this is \u2014 sunny field edge.",
+  "taken": "2026-08-01 18:49:08 +0000",
+  "lat": "44.878133",
+  "lon": "-68.688967",
   "batch": "orono",
-  "hash": "634a4435e957e693"
+  "hash": "aea770944722203d"
+ },
+ {
+  "id": "E944510C-3550-4D68-B1A3-16814D258E61",
+  "file": "E944510C-3550-4D68-B1A3-16814D258E61.jpg",
+  "species_id": "lupine",
+  "confidence": "high",
+  "note": "Post-bloom with seed pods on the spikes.",
+  "taken": "2026-08-01 18:49:20 +0000",
+  "lat": "44.878056",
+  "lon": "-68.688933",
+  "batch": "orono",
+  "hash": "82533920a9167496"
  },
  {
   "id": "720277C5-0D59-4FCA-8F0E-D7C5B5EECB40",
@@ -627,16 +588,16 @@
   "hash": "911bc315fa6373e7"
  },
  {
-  "id": "E944510C-3550-4D68-B1A3-16814D258E61",
-  "file": "E944510C-3550-4D68-B1A3-16814D258E61.jpg",
-  "species_id": "lupine",
-  "confidence": "high",
-  "note": "Post-bloom with seed pods on the spikes.",
-  "taken": "2026-08-01 18:49:20 +0000",
-  "lat": "44.878056",
-  "lon": "-68.688933",
+  "id": "28FBE830-6E4D-49EB-81D7-DC220C6E55D6",
+  "file": "28FBE830-6E4D-49EB-81D7-DC220C6E55D6.jpg",
+  "species_id": "aspen",
+  "confidence": "medium",
+  "note": "Round wavy-toothed leaves of a sucker patch; pinnate leaves of another plant lower left.",
+  "taken": "2026-08-01 18:50:49 +0000",
+  "lat": "44.87745",
+  "lon": "-68.687911",
   "batch": "orono",
-  "hash": "82533920a9167496"
+  "hash": "634a4435e957e693"
  },
  {
   "id": "3AFBBB7F-9990-414E-8233-94BA010F8E5A",
@@ -675,18 +636,6 @@
   "hash": "e70d3d3851332fcf"
  },
  {
-  "id": "3F0BE227-83A1-4A16-8B12-1EC3C52399F4",
-  "file": "3F0BE227-83A1-4A16-8B12-1EC3C52399F4.jpg",
-  "species_id": "unknown",
-  "confidence": "low",
-  "note": "Alternate ovate finely-toothed leaves with a long tapering tip \u2014 likely balsam poplar, possibly a cherry.",
-  "taken": "2026-08-01 18:54:30 +0000",
-  "lat": "44.876094",
-  "lon": "-68.688022",
-  "batch": "orono",
-  "hash": "39dc536b14d9f69b"
- },
- {
   "id": "95F8CFDB-74F4-4892-9586-3AACEA8FD412",
   "file": "95F8CFDB-74F4-4892-9586-3AACEA8FD412.jpg",
   "species_id": "bush-honeysuckle-invasive",
@@ -697,6 +646,18 @@
   "lon": "-68.687769",
   "batch": "orono",
   "hash": "b7715b7fedc00e33"
+ },
+ {
+  "id": "3F0BE227-83A1-4A16-8B12-1EC3C52399F4",
+  "file": "3F0BE227-83A1-4A16-8B12-1EC3C52399F4.jpg",
+  "species_id": "unknown",
+  "confidence": "low",
+  "note": "Alternate ovate finely-toothed leaves with a long tapering tip \u2014 likely balsam poplar, possibly a cherry.",
+  "taken": "2026-08-01 18:54:30 +0000",
+  "lat": "44.876094",
+  "lon": "-68.688022",
+  "batch": "orono",
+  "hash": "39dc536b14d9f69b"
  },
  {
   "id": "B2E0F03E-3C3C-4240-9D48-6DF5857DDE72",
@@ -733,5 +694,44 @@
   "lon": "-68.687739",
   "batch": "orono",
   "hash": "c4f9f66e2d1216da"
+ },
+ {
+  "id": "5E9EFA71-6B8C-48A8-9F1D-DE7EA118B4BE",
+  "file": "5E9EFA71-6B8C-48A8-9F1D-DE7EA118B4BE.jpg",
+  "species_id": "buttercup",
+  "confidence": "medium",
+  "note": "Dense mat of deeply cut palmate leaves; no flowers open in frame.",
+  "taken": "2026-08-01 18:56:13 +0000",
+  "lat": "44.875572",
+  "lon": "-68.687683",
+  "batch": "orono",
+  "hash": "6c0b7469e70c6bdf"
+ },
+ {
+  "id": "1673DE38-1B74-4A66-8387-8B03264A0980",
+  "file": "1673DE38-1B74-4A66-8387-8B03264A0980.jpg",
+  "species_id": "dandelion",
+  "confidence": "high",
+  "note": "Basal rosette with backward-pointing teeth; self-heal flowering behind.",
+  "taken": "2026-08-01 18:56:27 +0000",
+  "lat": "44.875567",
+  "lon": "-68.687675",
+  "batch": "orono",
+  "hash": "cf803cb57bdfc3ed"
+ },
+ {
+  "id": "05D7477B-0826-448B-A319-A52718F326DE",
+  "file": "05D7477B-0826-448B-A319-A52718F326DE.jpg",
+  "species_id": "white-clover",
+  "confidence": "medium",
+  "note": "Mixed roadside turf \u2014 white clover with feathery yarrow foliage woven through it.",
+  "taken": "2026-08-01 18:56:35 +0000",
+  "lat": "44.875575",
+  "lon": "-68.687667",
+  "batch": "orono",
+  "hash": "6e1ef67383ecbfdc",
+  "also": [
+   "yarrow"
+  ]
  }
 ]

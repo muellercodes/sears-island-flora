@@ -213,6 +213,29 @@ Forked from a family foraging guide. Four inversions, each for a reason:
 Foraging notes are retained as secondary detail — they're accurate and occasionally
 useful — but they are not what this site is for.
 
+## Survey area
+
+`survey_area` in `data/publish-config.json` bounds where survey records may come from.
+`verify` checks every published record against it, and `ingest` warns immediately if a
+batch lands outside — while undoing it is still one command, rather than after the batch
+has been identified and uploaded.
+
+Enforcement is automatic rather than a switch to remember:
+
+| `enforce` | Behaviour |
+|---|---|
+| `"auto"` (default) | Advisory while no in-area record exists — the published set is still stand-in data. Becomes binding the moment the first genuine Sears Island record is published. |
+| `true` | Always binding. |
+| `false` | Off. |
+
+The point of `auto` is that the arrival of real island photographs is what forces the
+placeholder data out. `verify` runs before `publish` in the deploy workflow, so a mixed
+set fails the build and names the `remove` command to fix it.
+
+The bounds shipped are a deliberately generous box around the island, its causeway and
+immediate shoreline. Tighten or widen them as you learn the ground — they are
+approximate, not surveyed.
+
 ## Retiring the proof-of-concept data
 
 The published records are currently a stand-in batch photographed in Orono, not on

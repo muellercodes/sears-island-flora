@@ -87,6 +87,41 @@ def public_obs():
     return [o for o in load(OBS_F, []) if not o.get("rejected")]
 
 
+def in_area(o, area):
+    try:
+        lat, lon = float(o["lat"]), float(o["lon"])
+    except (TypeError, ValueError, KeyError):
+        return None            # no coordinates — can't place it either way
+    return (area["lat_min"] <= lat <= area["lat_max"]
+            and area["lon_min"] <= lon <= area["lon_max"])
+
+
+def area_check(obs):
+    """Split published records by whether they fall inside the survey area.
+
+    Returns (area, inside, outside, enforcing) or None when no area is configured.
+
+    Enforcement is deliberately automatic. `enforce: "auto"` keeps this advisory
+    while the published set is stand-in data from elsewhere, and makes it binding
+    the moment the first genuine in-area record lands — so the arrival of real
+    survey photos is what forces the placeholder data out, rather than someone
+    remembering to flip a switch. Set true or false to decide explicitly.
+    """
+    area = load(PUBCFG_F, {}).get("survey_area")
+    if not area or "lat_min" not in area:
+        return None
+    inside, outside = [], []
+    for o in obs:
+        r = in_area(o, area)
+        if r is True:
+            inside.append(o)
+        elif r is False:
+            outside.append(o)
+    mode = area.get("enforce", "auto")
+    enforcing = bool(inside) if mode == "auto" else bool(mode)
+    return area, inside, outside, enforcing
+
+
 def enriched_species():
     """Species with regulatory status applied from the reference list."""
     species = load(SPECIES_F, [])
@@ -315,6 +350,18 @@ def cmd_ingest(args):
     cmd_build(args)
     dest_note = f" into {LOCAL_OBS_F.name} (local only, never published)" if args.local else ""
     print(f"\nAdded {added} new photo(s){dest_note}, skipped {skipped} already in the library.")
+
+    # Flag an out-of-area batch here, while it is still one command to undo, rather
+    # than at publish time after it has been identified and uploaded.
+    area = load(PUBCFG_F, {}).get("survey_area")
+    if area and added and not args.local:
+        fresh = [o for o in obs if o.get("batch") == batch]
+        out = [o for o in fresh if in_area(o, area) is False]
+        if out:
+            name = area.get("name", "the survey area")
+            print(f"\n  ! {len(out)} of {len(fresh)} photo(s) in this batch are outside {name}.")
+            print(f"    If they aren't survey records, re-ingest with --local, or remove them:")
+            print(f"      python3 scripts/plantdb.py remove --batch {batch} --yes")
     if added:
         print(f'They are tagged "unknown" — run `python3 scripts/plantdb.py todo` to see what needs identifying.')
 
@@ -451,12 +498,40 @@ def cmd_verify(args):
     for f in imprecise:
         problems.append(f"{f} has a coordinate rounded below survey precision")
 
+    # Records published under a survey's name should be from that survey.
+    ac = area_check(public_obs())
+    if ac:
+        area, inside, outside, enforcing = ac
+        mode = area.get("enforce", "auto")
+        name = area.get("name", "the survey area")
+        if outside and enforcing:
+            problems.append(f"{len(outside)} published record(s) fall outside {name}")
+            for o in outside[:3]:
+                problems.append(f"  {o['file'][:12]}… at {o.get('lat')}, {o.get('lon')}")
+        elif outside and mode == "auto":
+            # Not a `warnings` entry — that list is specifically about missing coordinates.
+            print(f"Note: {len(outside)} published record(s) are outside {name}. Tolerated "
+                  f"because no in-area record exists yet, so this is still stand-in data.")
+            print(f"      The check becomes binding as soon as the first {name} photo "
+                  f"is published.")
+        elif outside:
+            print(f"Note: {len(outside)} published record(s) are outside {name}; the area "
+                  f"check is switched off (survey_area.enforce = false).")
+        if inside:
+            print(f"{len(inside)}/{len(inside) + len(outside)} published record(s) are within {name}.")
+
     if problems:
         print("CHECK FAILED:")
         for p in problems[:10]:
             print(f"  ! {p}")
         if len(problems) > 10:
             print(f"  ... and {len(problems) - 10} more")
+        if ac and ac[3] and ac[2]:
+            batches = sorted({o.get("batch", "") for o in ac[2]} - {""})
+            print("\nOut-of-area records are usually leftover stand-in data. To retire them:")
+            for b in batches or ["<batch>"]:
+                print(f"  python3 scripts/plantdb.py remove --batch {b} --yes")
+            print("Or widen survey_area in data/publish-config.json if they belong here.")
         sys.exit(1)
     if warnings:
         print(f"{len(warnings)} record(s) without coordinates:")
