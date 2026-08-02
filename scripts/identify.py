@@ -274,6 +274,7 @@ def main():
             o["confidence"] = "rejected"
             o["note"] = f"Screened out: {reason}"
             o["rejected"] = True
+            o["identified"] = datetime.date.today().isoformat()
             # Delete the thumbnail. thumbs/ is tracked in git — it's how the deploy
             # runner gets images — so leaving a screened-out photo there would commit
             # it to a public repo forever. The original stays in gitignored photos/.
@@ -321,6 +322,9 @@ def main():
         o["species_id"] = sid
         o["confidence"] = r["confidence"]
         o["note"] = r["note"]
+        # When this record's identification was last written. The site shows it so a
+        # reader can tell a fresh ID from one that has sat unrevised.
+        o["identified"] = datetime.date.today().isoformat()
         also = [x for x in r.get("also_visible", []) if x in by_id and x != sid]
         if also:
             o["also"] = also

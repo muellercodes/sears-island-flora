@@ -82,6 +82,7 @@
   .card .sci { font-style:italic; color:var(--muted); font-size:12.5px; }
   .card .meta { margin-top:9px; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
   .card .uses { margin-top:8px; font-size:12.5px; color:var(--muted); }
+  .card .when { margin-top:6px; font-size:11.5px; color:var(--muted); }
 
   .badge { font-size:11px; font-weight:700; letter-spacing:.04em; text-transform:uppercase;
     padding:3px 8px; border-radius:5px; color:var(--on-accent); white-space:nowrap; }
@@ -195,6 +196,9 @@
     font-weight:600; cursor:pointer; }
   .pop .pb button:hover { border-color:var(--accent); }
   .map-note { color:var(--muted); font-size:12.5px; margin:10px 2px 0; }
+  footer { color:var(--muted); font-size:12.5px; margin-top:44px;
+    border-top:1px solid var(--line); padding-top:16px; }
+  footer p { margin:0; }
 
   /* Picker for pins holding several records — past max zoom they cannot be
      separated on the map, so they have to be selectable here. */
@@ -254,6 +258,8 @@
   <p class="count" id="count"></p>
   <div id="view"></div>
 
+  <footer><p id="updated"></p></footer>
+
 </main>
 
 <dialog id="sheet"><div class="sheet" id="sheet-content"></div></dialog>
@@ -297,6 +303,15 @@ const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;
 // The build writes an explicit thumb path, because local-only records live in a
 // separate untracked directory. Older records without one fall back to thumbs/.
 const thumbSrc = o => o.thumb || `thumbs/${o.file}`;
+// `taken` is the EXIF capture time; `identified` is when the ID was last written,
+// and is absent on records that predate that being recorded — show nothing rather
+// than guess a date for them.
+const day = o => (o.taken || "").slice(0, 10);
+function dateSpan(list) {
+  const d = [...new Set(list.map(day).filter(Boolean))].sort();
+  if (!d.length) return "";
+  return d.length === 1 ? `Photographed ${d[0]}` : `Photographed ${d[0]} – ${d.at(-1)}`;
+}
 
 // ---- filters -------------------------------------------------------------
 $("filters").innerHTML = ORDER.map(k => {
@@ -380,6 +395,7 @@ function cardHTML(s) {
         <span class="pcount">${shots.length ? `${shots.length} photo${shots.length === 1 ? "" : "s"}`
           : also.length ? `seen in ${also.length} photo${also.length === 1 ? "" : "s"}` : "no photo"}</span>
       </div>
+      ${dateSpan([...shots, ...also]) ? `<div class="when">${esc(dateSpan([...shots, ...also]))}</div>` : ""}
       ${uses ? `<div class="uses">${esc(uses)}</div>` : ""}
     </div></button>`;
 }
@@ -563,6 +579,7 @@ function listHTML(gid, items) {
         <span class="rn">${esc(s.common)}</span>
         <span class="rm"><span class="dot d-${statusOf(s)}"></span>${esc(badgeOf(s).label)}
           · <span class="conf-${o.confidence}">${esc(o.confidence)}</span></span>
+        <span class="rm">${esc(day(o))}${o.identified ? ` · ID'd ${esc(o.identified)}` : ""}</span>
       </span></button>`;
   }).join("");
   return `<div class="pop">
@@ -585,7 +602,8 @@ function detailHTML(gid, idx) {
       <div class="ps">${esc(s.scientific)}</div>
       <div class="pm"><span class="badge ${badgeOf(s).cls}">${badgeOf(s).label}</span>
         · <span class="conf-${o.confidence}">${esc(o.confidence)}</span></div>
-      <div class="pm">${esc((o.taken || "").slice(0, 10))} · ${esc(o.lat)}, ${esc(o.lon)}</div>
+      <div class="pm">${esc(day(o))} · ${esc(o.lat)}, ${esc(o.lon)}</div>
+      ${o.identified ? `<div class="pm">Identified ${esc(o.identified)}</div>` : ""}
       ${o.note ? `<div class="pm">${esc(o.note)}</div>` : ""}
       <button data-id="${esc(o.species_id)}" onclick="openSheet(this.dataset.id)">Full details</button>
     </div></div>`;
@@ -614,6 +632,7 @@ function shotGrid(list, s, secondary = false) {
           : `<span class="conf conf-${o.confidence}">${esc(o.confidence)} confidence</span><br>`}
         ${esc(o.note || "")}
         <div style="margin-top:6px;opacity:.75">${esc((o.taken || "").slice(0, 16))}${o.lat ? ` · ${esc(o.lat)}, ${esc(o.lon)}` : ""}</div>
+        ${o.identified ? `<div style="margin-top:3px;opacity:.6">Identified ${esc(o.identified)}</div>` : ""}
       </figcaption>
     </figure>`;
   }).join("")}</div>`;
@@ -686,6 +705,15 @@ $("lightbox").onclick = () => $("lightbox").close();
   $("hdr-sub").textContent = `${OBS.length} photos`
     + (batches.length === 1 ? ` · ${batches[0]}`
        : dates.length ? ` · ${dates[0]}${dates.at(-1) !== dates[0] ? "–" + dates.at(-1) : ""}` : "");
+  // "Last updated" is the most recent identification if any record carries one,
+  // otherwise the build time — never a guess.
+  const ids = OBS.map(o => o.identified).filter(Boolean).sort();
+  const built = (DB.generated || "").slice(0, 10);
+  const span = dateSpan(OBS);
+  $("updated").textContent = [
+    ids.length ? `Last updated ${ids.at(-1)}` : (built ? `Last updated ${built}` : ""),
+    span, `${OBS.length} record${OBS.length === 1 ? "" : "s"}`,
+  ].filter(Boolean).join(" · ");
   render();
 })();
 </script>
