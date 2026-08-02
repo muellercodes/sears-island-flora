@@ -79,6 +79,37 @@ EXIF is still stripped from published thumbnails. The useful GPS is extracted in
 JSON; leaving EXIF in the image only exposes contributor camera serials and device
 identifiers for no benefit.
 
+That argument holds **only for the survey area.** It does not transfer to photos taken
+somewhere people live, which is what the upstream project was protecting against. For
+anything outside Sears Island — test batches especially — use `--local`:
+
+```bash
+python3 scripts/plantdb.py ingest ~/some-folder --local
+```
+
+Local-only records go to `data/observations-local.json` and their thumbnails to
+`thumbs-local/`. Both are gitignored, so they cannot be committed or published even by
+`autopilot.sh`'s `git add -A`. They still appear in the local app, map included. The
+file a record lives in *is* the marker — there is no flag to forget to set.
+
+`app/data.js` is generated and gitignored for the same reason: `build` merges local-only
+records into it so the local map can show them. The deploy workflow regenerates it, and
+`publish` writes `public/` from the source JSON rather than reading that file back.
+
+## Map
+
+The **Map** view plots every located record on OpenStreetMap tiles. Markers are the
+photo itself, ringed in its regulatory-status colour; tap one for a card, or *Full
+details* for the species sheet. Pins that would overlap merge into one with a count and
+separate as you zoom — grouped by distance on screen rather than by rounded coordinates,
+so nothing is hidden underneath and no precision is thrown away. A mixed pin takes the
+colour of its most urgent member, so a regulated find is never hidden behind a native
+one beside it.
+
+Leaflet and the tiles are this app's only external dependency and load lazily when the
+Map view is first opened. The Species and Photos views stay entirely self-contained, and
+still work with no network.
+
 ## Setup
 
 ```bash
@@ -108,6 +139,7 @@ gh api -X POST repos/OWNER/sears-island-flora/pages -f build_type=workflow
 
 ```bash
 python3 scripts/plantdb.py ingest DIR   # copy in, thumbnail, strip EXIF, keep precise GPS
+python3 scripts/plantdb.py ingest DIR --local   # ...but never commit or publish these
 python3 scripts/plantdb.py invasives    # survey report by regulatory status, with locations
 python3 scripts/plantdb.py invasives --all   # include natives
 python3 scripts/plantdb.py verify       # data-quality check

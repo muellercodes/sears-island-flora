@@ -140,6 +140,50 @@
   code { background:var(--line); padding:2px 6px; border-radius:5px; font-size:12.5px; }
   #lightbox::backdrop { background:rgba(0,0,0,.9); }
   #lightbox img { max-width:100%; max-height:90vh; display:block; margin:0 auto; border-radius:8px; }
+
+  /* ---- map ---- */
+  /* Tall enough to be worth panning on a phone, capped so the page still scrolls. */
+  #map { height:min(72vh,680px); border-radius:13px; border:1px solid var(--line);
+         background:var(--panel); box-shadow:var(--shadow); }
+  @media (max-width:620px){ #map { height:70vh; border-radius:11px; } }
+  /* OSM tiles are light-only; dulling them in dark mode keeps the markers readable. */
+  @media (prefers-color-scheme: dark) { .leaflet-tile-pane { filter:brightness(.68) saturate(.75); } }
+  /* Leaflet's stylesheet is injected at runtime, so it lands after this block in
+     the cascade. These selectors carry an extra class to outrank it. */
+  .leaflet-container { font:inherit; background:var(--panel); }
+  .leaflet-popup .leaflet-popup-content-wrapper,
+  .leaflet-popup .leaflet-popup-tip { background:var(--panel); color:var(--ink); box-shadow:var(--shadow); }
+  .leaflet-popup .leaflet-popup-content-wrapper { border:1px solid var(--line); overflow:hidden; }
+  .leaflet-popup .leaflet-popup-content { margin:0; width:190px !important; }
+  .leaflet-bar.leaflet-control a { background:var(--panel); color:var(--ink); border-bottom-color:var(--line); }
+  .leaflet-bar.leaflet-control a:hover { background:var(--bg); color:var(--ink); }
+  .leaflet-control-attribution { background:rgba(255,255,255,.8) !important; font-size:10px; }
+  @media (prefers-color-scheme: dark) {
+    .leaflet-control-attribution { background:rgba(20,23,15,.8) !important; }
+    .leaflet-control-attribution a { color:var(--accent); }
+  }
+
+  /* Marker = the photo itself, ringed in its regulatory-status colour. */
+  .mk { width:44px; height:44px; border-radius:50%; overflow:hidden; border:3px solid var(--unknown);
+        box-shadow:0 2px 6px rgba(0,0,0,.4); background:var(--panel); cursor:pointer; }
+  .mk img { width:100%; height:100%; object-fit:cover; display:block; }
+  .mk.s-regulated{border-color:var(--toxic)} .mk.s-invasive{border-color:var(--caution)}
+  .mk.s-introduced{border-color:var(--med)} .mk.s-native{border-color:var(--edible)}
+  .mk .cnt { position:absolute; right:-4px; top:-4px; background:var(--ink); color:var(--bg);
+    font-size:11px; font-weight:700; min-width:18px; height:18px; border-radius:9px;
+    display:flex; align-items:center; justify-content:center; padding:0 4px; }
+  .mk-wrap { position:relative; }
+
+  .pop { text-align:left; }
+  .pop img { width:100%; aspect-ratio:4/3; object-fit:cover; display:block; }
+  .pop .pb { padding:9px 11px 11px; }
+  .pop .pn { font-size:13.5px; font-weight:600; line-height:1.3; }
+  .pop .ps { font-size:11.5px; color:var(--muted); font-style:italic; margin-top:1px; }
+  .pop .pm { font-size:11px; color:var(--muted); margin-top:5px; }
+  .pop button { margin-top:8px; width:100%; border:1px solid var(--line); background:var(--bg);
+    color:var(--accent); border-radius:7px; padding:6px; font:inherit; font-size:12px;
+    font-weight:600; cursor:pointer; }
+  .map-note { color:var(--muted); font-size:12.5px; margin:10px 2px 0; }
 </style>
 </head>
 <body>
@@ -153,7 +197,8 @@
       <input type="search" id="q" placeholder="Search name, part, use, caution…  ( / )" autocomplete="off">
       <div class="seg" role="group" aria-label="View">
         <button id="v-species" aria-pressed="true">Species</button>
-        <button id="v-photos" aria-pressed="false">All photos</button>
+        <button id="v-photos" aria-pressed="false">Photos</button>
+        <button id="v-map" aria-pressed="false">Map</button>
       </div>
     </div>
     <div class="chips" id="filters"></div>
@@ -220,6 +265,9 @@ const isAuto = s => typeof s.source === "string" && s.source.startsWith("auto");
 let mode = "species", query = "", active = new Set();
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+// The build writes an explicit thumb path, because local-only records live in a
+// separate untracked directory. Older records without one fall back to thumbs/.
+const thumbSrc = o => o.thumb || `thumbs/${o.file}`;
 
 // ---- filters -------------------------------------------------------------
 $("filters").innerHTML = ORDER.map(k => {
@@ -237,10 +285,11 @@ $("filters").onclick = e => {
 $("q").oninput = e => { query = e.target.value.toLowerCase().trim(); render(); };
 $("v-species").onclick = () => setMode("species");
 $("v-photos").onclick  = () => setMode("photos");
+$("v-map").onclick     = () => setMode("map");
+const MODES = ["species", "photos", "map"];
 function setMode(m) {
   mode = m;
-  $("v-species").setAttribute("aria-pressed", m === "species");
-  $("v-photos").setAttribute("aria-pressed", m === "photos");
+  MODES.forEach(k => $("v-" + k).setAttribute("aria-pressed", k === m));
   render();
 }
 document.addEventListener("keydown", e => {
@@ -263,7 +312,14 @@ function render() {
   const list = DB.species.filter(matches)
     .sort((a, b) => ORDER.indexOf(statusOf(a)) - ORDER.indexOf(statusOf(b)) || a.common.localeCompare(b.common));
 
-  if (mode === "species") {
+  if (mode === "map") {
+    const ok = new Set(list.map(s => s.id));
+    const shots = OBS.filter(o => ok.has(o.species_id));
+    const located = shots.filter(hasLoc);
+    $("count").textContent = `${located.length} located record${located.length === 1 ? "" : "s"}`
+      + (shots.length - located.length ? ` · ${shots.length - located.length} without coordinates` : "");
+    renderMap(located, shots.length - located.length);
+  } else if (mode === "species") {
     $("count").textContent = `${list.length} entries · ${list.reduce((n, s) => n + (byS[s.id] || []).length, 0)} photos`;
     $("view").innerHTML = list.length ? `<div class="grid">${list.map(cardHTML).join("")}</div>`
       : `<p class="empty">Nothing matches that.</p>`;
@@ -285,7 +341,7 @@ function cardHTML(s) {
   const e = badgeOf(s);
   const uses = [...new Set((s.parts || []).map(p => p.part))].slice(0, 3).join(" · ");
   return `<button class="card" data-id="${s.id}">
-    ${cover ? `<img loading="lazy" src="thumbs/${esc(cover.file)}" alt="${esc(s.common)}"${shots[0] ? "" : ' class="secondary"'}>`
+    ${cover ? `<img loading="lazy" src="${esc(thumbSrc(cover))}" alt="${esc(s.common)}"${shots[0] ? "" : ' class="secondary"'}>`
             : `<div class="noshot"><span>🌿</span><small>Reference entry<br>no photo yet</small></div>`}
     <div class="body">
       <h3>${esc(s.common)}${s.danger ? ' <span class="danger-flag">!</span>' : ""}</h3>
@@ -302,10 +358,124 @@ function cardHTML(s) {
 function photoHTML(o) {
   const s = SP[o.species_id] || SP.unknown;
   return `<button class="pcard" data-id="${o.species_id}">
-    <img loading="lazy" src="thumbs/${esc(o.file)}" alt="${esc(s.common)}">
+    <img loading="lazy" src="${esc(thumbSrc(o))}" alt="${esc(s.common)}">
     <div class="cap"><div class="n">${esc(s.common)}</div>
       <div class="t">${esc((o.taken || "").slice(0, 10))} · <span class="conf-${o.confidence}">${esc(o.confidence)}</span></div>
     </div></button>`;
+}
+
+// ---- map -----------------------------------------------------------------
+// Leaflet + OSM tiles are the only external dependency in this app, and they load
+// lazily — the species and photo views stay entirely self-contained, and if the
+// network is unavailable the other two views are unaffected.
+const LEAFLET = "https://unpkg.com/leaflet@1.9.4/dist/leaflet";
+let leafletP = null, map = null, markers = null;
+
+function ensureLeaflet() {
+  if (window.L) return Promise.resolve();
+  if (leafletP) return leafletP;
+  return leafletP = new Promise((res, rej) => {
+    const css = document.createElement("link");
+    css.rel = "stylesheet"; css.href = LEAFLET + ".css";
+    document.head.appendChild(css);
+    const js = document.createElement("script");
+    js.src = LEAFLET + ".js"; js.crossOrigin = "";
+    js.onload = res;
+    js.onerror = () => { leafletP = null; rej(new Error("Leaflet failed to load")); };
+    document.head.appendChild(js);
+  });
+}
+
+const hasLoc = o => Number.isFinite(parseFloat(o.lat)) && Number.isFinite(parseFloat(o.lon));
+const llOf = o => [parseFloat(o.lat), parseFloat(o.lon)];
+let mapped = [];   // located records currently on the map
+
+function renderMap(located, unlocated) {
+  mapped = located;
+  if (!$("map")) {
+    $("view").innerHTML = `<div id="map"></div><p class="map-note" id="map-note"></p>`;
+    map = markers = null;
+  }
+  $("map-note").textContent = unlocated
+    ? `${unlocated} record${unlocated === 1 ? " has" : "s have"} no coordinates and can't be mapped.`
+    : "";
+
+  if (!located.length) {
+    $("map").innerHTML = `<p class="empty">No located records match that.</p>`;
+    return;
+  }
+
+  ensureLeaflet().then(() => {
+    if (!map) {
+      map = L.map("map", { scrollWheelZoom: false });   // don't hijack page scroll on the way past
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      }).addTo(map);
+      markers = L.layerGroup().addTo(map);
+      map.on("click", () => map.scrollWheelZoom.enable());   // opt in once they're using it
+      map.on("zoomend", drawMarkers);                        // regroup as pins separate
+    }
+    map.invalidateSize();
+    map.fitBounds(L.latLngBounds(mapped.map(llOf)).pad(0.25), { maxZoom: 17 });
+    drawMarkers();
+  }).catch(() => {
+    $("map").innerHTML = `<p class="empty">The map couldn't load — check your connection.<br>`
+      + `The Species and Photos views work offline.</p>`;
+  });
+}
+
+// Group by distance ON SCREEN, not by rounded coordinates. Phone GPS scatters
+// neighbouring shots by 5-15 m, so any fixed coordinate tolerance is either too
+// tight to merge them (they stack invisibly and the ones beneath can't be tapped)
+// or so loose it discards the precision this survey exists to record. Grouping in
+// pixels merges pins only when they would actually collide, and splits them as
+// you zoom in.
+const MERGE_PX = 46;   // marker is 44px across
+
+function drawMarkers() {
+  if (!map || !markers) return;
+  markers.clearLayers();
+  const z = map.getZoom();
+  const groups = [];
+  mapped.forEach(o => {
+    const p = map.project(llOf(o), z);
+    const g = groups.find(g => g.p.distanceTo(p) < MERGE_PX);
+    if (g) g.items.push(o); else groups.push({ p, items: [o] });
+  });
+
+  groups.forEach(g => {
+    const o = g.items[0], s = SP[o.species_id] || SP.unknown;
+    // A mixed pin takes the colour of its most urgent member — a regulated find
+    // must not be hidden behind a native one it happens to sit next to.
+    const worst = g.items.map(x => statusOf(SP[x.species_id] || SP.unknown))
+      .sort((a, b) => ORDER.indexOf(a) - ORDER.indexOf(b))[0];
+    const icon = L.divIcon({
+      className: "", iconSize: [44, 44], iconAnchor: [22, 22], popupAnchor: [0, -20],
+      html: `<div class="mk-wrap"><div class="mk s-${worst}">`
+          + `<img src="${esc(thumbSrc(o))}" alt="${esc(s.common)}" loading="lazy">`
+          + `</div>${g.items.length > 1 ? `<span class="cnt">${g.items.length}</span>` : ""}</div>`,
+    });
+    L.marker(llOf(o), { icon, title: s.common, alt: s.common, keyboard: true })
+      .addTo(markers)
+      .bindPopup(popupHTML(g.items), { closeButton: false, autoPanPadding: [24, 24] });
+  });
+}
+
+function popupHTML(items) {
+  const o = items[0], s = SP[o.species_id] || SP.unknown;
+  const others = [...new Set(items.slice(1).map(x => (SP[x.species_id] || SP.unknown).common))];
+  return `<div class="pop">
+    <img src="${esc(thumbSrc(o))}" alt="${esc(s.common)}">
+    <div class="pb">
+      <div class="pn">${esc(s.common)}</div>
+      <div class="ps">${esc(s.scientific)}</div>
+      <div class="pm"><span class="badge ${badgeOf(s).cls}">${badgeOf(s).label}</span>
+        · <span class="conf-${o.confidence}">${esc(o.confidence)}</span></div>
+      <div class="pm">${esc((o.taken || "").slice(0, 10))} · ${esc(o.lat)}, ${esc(o.lon)}</div>
+      ${others.length ? `<div class="pm">Also at this pin: ${esc(others.join(", "))}</div>` : ""}
+      <button data-id="${esc(o.species_id)}" onclick="openSheet(this.dataset.id)">Full details</button>
+    </div></div>`;
 }
 
 // ---- detail sheet --------------------------------------------------------
@@ -315,7 +485,7 @@ function shotGrid(list, s, secondary = false) {
   return `<div class="shots">${list.map(o => {
     const subject = SP[o.species_id];
     return `<figure class="shot" style="margin:0">
-      <img loading="lazy" src="thumbs/${esc(o.file)}" data-full="thumbs/${esc(o.file)}" alt="${esc(s.common)}">
+      <img loading="lazy" src="${esc(thumbSrc(o))}" data-full="${esc(thumbSrc(o))}" alt="${esc(s.common)}">
       <figcaption class="cap">
         ${secondary
           ? `<span class="conf" style="color:var(--muted)">filed under ${esc(subject ? subject.common : o.species_id)}</span><br>`

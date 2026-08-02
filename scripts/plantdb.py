@@ -14,7 +14,17 @@ import argparse, hashlib, json, os, pathlib, shutil, subprocess, sys, datetime
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 PHOTOS, THUMBS, DATA = ROOT / "photos", ROOT / "thumbs", ROOT / "data"
+# thumbs/ is tracked — it's the only way the deploy runner gets images. So a
+# local-only photo's thumbnail needs somewhere gitignored to live, or `git add -A`
+# in autopilot.sh would commit it regardless of where its record is stored.
+THUMBS_LOCAL = ROOT / "thumbs-local"
 SPECIES_F, OBS_F = DATA / "species.json", DATA / "observations.json"
+# Local-only records: gitignored, so they can never be committed or published.
+# Which file a record lives in IS the marker — there is no flag to forget to set.
+# Use this for anything shot outside the survey area, e.g. test photos from a
+# populated town, where the "precise location is the deliverable" argument does
+# not hold and the upstream reasons for blurring do.
+LOCAL_OBS_F = DATA / "observations-local.json"
 PRIVATE_F = DATA / "locations-private.json"   # gitignored: full-precision coords
 INVASIVE_F = DATA / "invasive-reference.json"
 DATA_JS = ROOT / "app" / "data.js"
@@ -44,6 +54,48 @@ def load(p, default):
 def save(p, obj):
     p.parent.mkdir(parents=True, exist_ok=True)
     json.dump(obj, open(p, "w"), indent=1)
+
+
+def load_obs():
+    """Every observation, public and local-only, tagged in memory by origin."""
+    obs = load(OBS_F, [])
+    for o in load(LOCAL_OBS_F, []):
+        obs.append({**o, "local_only": True})
+    return obs
+
+
+def save_obs(obs):
+    """Split back out by the local_only tag. Local records never touch OBS_F."""
+    save(OBS_F, [o for o in obs if not o.get("local_only")])
+    loc = [{k: v for k, v in o.items() if k != "local_only"} for o in obs if o.get("local_only")]
+    if loc or LOCAL_OBS_F.exists():
+        save(LOCAL_OBS_F, loc)
+
+
+def thumb_dir(o):
+    return THUMBS_LOCAL if o.get("local_only") else THUMBS
+
+
+def thumb_path(o):
+    return thumb_dir(o) / o["file"]
+
+
+def public_obs():
+    """Only what may be published: public file, minus anything the screener rejected."""
+    return [o for o in load(OBS_F, []) if not o.get("rejected")]
+
+
+def enriched_species():
+    """Species with regulatory status applied from the reference list."""
+    species = load(SPECIES_F, [])
+    cls = load(INVASIVE_F, {}).get("classification", {})
+    for sp in species:
+        if sp["id"] in cls:
+            sp["origin_status"] = cls[sp["id"]]["status"]
+            if cls[sp["id"]].get("note"):
+                sp["origin_note"] = cls[sp["id"]]["note"]
+        sp.setdefault("origin_status", "unknown")
+    return species
 
 
 def sha(path, blocks=8):
@@ -130,7 +182,7 @@ def cmd_ingest(args):
     if not src_root.is_dir():
         sys.exit(f"Not a folder: {src_root}")
 
-    obs = load(OBS_F, [])
+    obs = load_obs()
     known = {o.get("hash") for o in obs if o.get("hash")}
     # hash anything already in the library that predates hashing
     for o in obs:
@@ -165,49 +217,56 @@ def cmd_ingest(args):
                               capture_output=True).returncode != 0:
                 print(f"  ! could not convert {src.name}")
                 continue
-        if not make_thumb(dest, THUMBS / dest.name):
+        if not make_thumb(dest, (THUMBS_LOCAL if args.local else THUMBS) / dest.name):
             print(f"  ! could not thumbnail {dest.name}")
         e = exif_of(dest)
         # Precise coordinates go to the gitignored sidecar; the tracked record is blurred.
         private = load(PRIVATE_F, {})
         private[dest.name] = {"lat": e["lat"], "lon": e["lon"], "taken": e["taken"]}
         save(PRIVATE_F, private)
-        obs.append({"id": dest.stem, "file": dest.name, "species_id": "unknown",
-                    "confidence": "unidentified", "note": "", "taken": e["taken"],
-                    "lat": blur(e["lat"]), "lon": blur(e["lon"]), "batch": batch, "hash": h})
+        rec = {"id": dest.stem, "file": dest.name, "species_id": "unknown",
+               "confidence": "unidentified", "note": "", "taken": e["taken"],
+               "lat": blur(e["lat"]), "lon": blur(e["lon"]), "batch": batch, "hash": h}
+        if args.local:
+            rec["local_only"] = True
+        obs.append(rec)
         known.add(h)
         added += 1
         print(f"  + {dest.name}")
 
     obs.sort(key=lambda o: o.get("taken", ""))
-    save(OBS_F, obs)
+    save_obs(obs)
     cmd_build(args)
-    print(f"\nAdded {added} new photo(s), skipped {skipped} already in the library.")
+    dest_note = f" into {LOCAL_OBS_F.name} (local only, never published)" if args.local else ""
+    print(f"\nAdded {added} new photo(s){dest_note}, skipped {skipped} already in the library.")
     if added:
         print(f'They are tagged "unknown" — run `python3 scripts/plantdb.py todo` to see what needs identifying.')
 
 
 def cmd_build(args):
-    species = load(SPECIES_F, [])
-    obs = load(OBS_F, [])
-    # The reference list is the source of truth for status; identify.py sets it on new entries.
-    cls = load(INVASIVE_F, {}).get("classification", {})
-    for sp in species:
-        if sp["id"] in cls:
-            sp["origin_status"] = cls[sp["id"]]["status"]
-            if cls[sp["id"]].get("note"):
-                sp["origin_note"] = cls[sp["id"]]["note"]
-        sp.setdefault("origin_status", "unknown")
+    """Regenerate app/data.js for LOCAL viewing — includes local-only records.
+
+    app/data.js is gitignored precisely because it merges them in. The published
+    copy is written separately by `publish` and contains public records only.
+    """
+    species = enriched_species()
+    obs = load_obs()
     ids = {s["id"] for s in species}
     for o in obs:
         if o["species_id"] not in ids:
             print(f"  ! {o['file']} references unknown species '{o['species_id']}' — falling back to 'unknown'")
             o["species_id"] = "unknown"
+    # Tell the app where each thumbnail actually lives, so it doesn't have to know
+    # the tracked/local split. publish() overwrites this with the published layout.
+    for o in obs:
+        o["thumb"] = f"{thumb_dir(o).name}/{o['file']}"
     DATA_JS.parent.mkdir(parents=True, exist_ok=True)
     payload = {"species": species, "observations": obs,
                "generated": datetime.datetime.now().strftime("%Y-%m-%d %H:%M")}
     DATA_JS.write_text("window.PLANT_DB = " + json.dumps(payload, indent=1) + ";\n")
-    print(f"Built {DATA_JS.relative_to(ROOT)} — {len(species)} species, {len(obs)} photos.")
+    n_local = sum(1 for o in obs if o.get("local_only"))
+    extra = f" ({n_local} local-only, never published)" if n_local else ""
+    print(f"Built {DATA_JS.relative_to(ROOT)} — {len(species)} species, {len(obs)} photos{extra}.")
 
 
 RANK = {"regulated": 0, "invasive": 1, "unknown": 2, "introduced": 3, "native": 4}
@@ -218,7 +277,7 @@ def cmd_invasives(args):
     ref = load(INVASIVE_F, {})
     cls = ref.get("classification", {})
     species = {s["id"]: s for s in load(SPECIES_F, [])}
-    obs = load(OBS_F, [])
+    obs = load_obs()
 
     # A species is "seen" in a photo if it is the subject or merely visible in it.
     sightings = {}
@@ -272,11 +331,12 @@ def cmd_scrub(args):
     time you're unsure what's in the repo.
     """
     stripped = 0
-    for t in sorted(THUMBS.glob("*.jpg")):
+    all_thumbs = sorted(THUMBS.glob("*.jpg")) + sorted(THUMBS_LOCAL.glob("*.jpg"))
+    for t in all_thumbs:
         before = t.stat().st_size
         if strip_exif(t) and t.stat().st_size != before:
             stripped += 1
-    print(f"Thumbnails: stripped metadata from {stripped} of {len(list(THUMBS.glob('*.jpg')))}.")
+    print(f"Thumbnails: stripped metadata from {stripped} of {len(all_thumbs)}.")
 
     print("Coordinates: left at full precision — this is a survey, location is the point.")
     cmd_build(args)
@@ -298,12 +358,12 @@ def cmd_verify(args):
     import re
     problems, warnings = [], []
 
-    for t in sorted(THUMBS.glob("*.jpg")):
+    for t in sorted(THUMBS.glob("*.jpg")) + sorted(THUMBS_LOCAL.glob("*.jpg")):
         head = t.read_bytes()[:8192]
         if b"Exif" in head or b"http://ns.adobe.com/xap" in head:
             problems.append(f"{t.relative_to(ROOT)} still has an EXIF/XMP segment")
 
-    obs = load(OBS_F, [])
+    obs = load_obs()
     missing = [o["file"] for o in obs if not o.get("lat")]
     imprecise = [o["file"] for o in obs
                  if o.get("lat") and len(o["lat"].split(".")[-1]) < 4]
@@ -342,17 +402,19 @@ def cmd_publish(args):
     (pub / "app").mkdir(parents=True)
     shutil.copy2(ROOT / "index.html", pub / "index.html")
 
-    payload = json.loads((DATA_JS).read_text().split("=", 1)[1].rsplit(";", 1)[0])
-
-    # Screened-out photos never leave the machine. They stay in observations.json so the
-    # pipeline doesn't re-process them, but by definition a rejected photo is one that
-    # isn't vegetation — someone's camera roll spilling in — so neither the record nor
-    # its thumbnail belongs on a public site.
-    kept = [o for o in payload["observations"] if not o.get("rejected")]
-    dropped = len(payload["observations"]) - len(kept)
-    payload["observations"] = kept
+    # Built from the source files, NOT from app/data.js — that file deliberately
+    # merges in local-only records, and reading it back would republish them.
+    # Screened-out photos are excluded too: by definition a rejected photo isn't
+    # vegetation (someone's camera roll spilling in), so neither the record nor its
+    # thumbnail belongs on a public site.
+    kept = public_obs()
+    dropped = len(load(OBS_F, [])) - len(kept)
+    withheld = len(load(LOCAL_OBS_F, []))
     for o in kept:
         o.pop("hash", None)
+        o["thumb"] = f"thumbs/{o['file']}"   # public/ has one flat thumbs dir
+    payload = {"species": enriched_species(), "observations": kept,
+               "generated": datetime.datetime.now().strftime("%Y-%m-%d %H:%M")}
     (pub / "app" / "data.js").write_text("window.PLANT_DB = " + json.dumps(payload, indent=1) + ";\n")
 
     # Copy only the thumbnails the published data actually references — that way a
@@ -369,6 +431,8 @@ def cmd_publish(args):
     print(f"Built public/ — {len(payload['species'])} species, {n} thumbnails, {size:.1f} MB.")
     if dropped:
         print(f"Withheld {dropped} screened-out photo(s) — not published.")
+    if withheld:
+        print(f"Withheld {withheld} local-only record(s) from {LOCAL_OBS_F.name} — not published.")
     print("Full-resolution originals stay local in photos/ and are never published.")
 
 
@@ -378,7 +442,7 @@ def cmd_species(args):
 
 
 def cmd_todo(args):
-    obs = load(OBS_F, [])
+    obs = load_obs()
     pend = [o for o in obs if o["species_id"] == "unknown"]
     if not pend:
         print("Everything is identified.")
@@ -397,6 +461,9 @@ if __name__ == "__main__":
     i = sub.add_parser("ingest", help="add every photo in a folder (recursively)")
     i.add_argument("folder")
     i.add_argument("--batch", help="label for this group of photos (defaults to the folder name)")
+    i.add_argument("--local", action="store_true",
+                   help="keep these records out of git and off the published site — "
+                        "use for test photos or anywhere outside the survey area")
     i.set_defaults(func=cmd_ingest)
     sub.add_parser("build", help="regenerate app/data.js").set_defaults(func=cmd_build)
     sub.add_parser("species", help="list species ids").set_defaults(func=cmd_species)

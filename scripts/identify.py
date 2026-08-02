@@ -142,6 +142,13 @@ def save(p, o):
     json.dump(o, open(p, "w"), indent=1)
 
 
+# Observations are split across a tracked file and a gitignored local-only one.
+# Reuse plantdb's split so an identification written here lands back in the file
+# the record came from — a local-only photo must never be promoted into git.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from plantdb import load_obs, save_obs, thumb_path  # noqa: E402
+
+
 def slugify(name, taken):
     s = "".join(c if c.isalnum() else "-" for c in name.lower()).strip("-")
     while "--" in s:
@@ -163,7 +170,7 @@ def describe(obs):
         except ValueError:
             bits.append(f"Photographed {d}")
     if obs.get("lat"):
-        bits.append(f"near {obs['lat']}, {obs['lon']} (approximate)")
+        bits.append(f"at {obs['lat']}, {obs['lon']}")
     if obs.get("batch"):
         bits.append(f"from the batch '{obs['batch']}'")
     return ". ".join(bits) + "." if bits else "No capture metadata available."
@@ -191,7 +198,7 @@ def main():
                  "  export ANTHROPIC_API_KEY=sk-ant-...")
 
     client = anthropic.Anthropic()
-    species, obs = load(SPECIES_F), load(OBS_F)
+    species, obs = load(SPECIES_F), load_obs()
     by_id = {s["id"]: s for s in species}
 
     pending = [o for o in obs if o["species_id"] == "unknown"
@@ -212,7 +219,7 @@ def main():
     print(f"Region: {args.region}\n")
     done = failed = rejected = 0
     for i, o in enumerate(pending, 1):
-        thumb = THUMBS / o["file"]
+        thumb = thumb_path(o)
         if not thumb.exists():
             print(f"  [{i}/{len(pending)}] {o['file']}: no thumbnail, skipping")
             failed += 1
@@ -273,7 +280,7 @@ def main():
             thumb.unlink(missing_ok=True)
             rejected += 1
             print(f"  [{i}/{len(pending)}] {o['file']}: REJECTED — {reason[:60]}")
-            save(OBS_F, obs)
+            save_obs(obs)
             continue
 
         # Fungi never get an edible verdict from a photo, whatever came back.
@@ -323,7 +330,7 @@ def main():
               f"{u.input_tokens}in/{u.output_tokens}out")
 
         save(SPECIES_F, species)   # save as we go — a crash never loses completed work
-        save(OBS_F, obs)
+        save_obs(obs)
 
     print(f"\nIdentified {done}, screened out {rejected}, failed {failed}.")
     if done:

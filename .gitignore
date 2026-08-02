@@ -1,6 +1,14 @@
 photos/
 .venv/
 __pycache__/
+# Generated: merges in local-only records, so it must never be committed.
+# The deploy workflow regenerates it, and writes public/ from the source JSON.
+app/data.js
+# Records kept off the published site entirely (test photos, anywhere outside
+# the survey area), and their thumbnails. thumbs/ is tracked so the deploy runner
+# can publish images, so local-only thumbnails need their own untracked home.
+data/observations-local.json
+thumbs-local/
 public/
 .DS_Store
 logs/*.log
