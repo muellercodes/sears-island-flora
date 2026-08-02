@@ -1,5 +1,5 @@
 {
  "_comment": "Where published thumbnails are served from. Not a secret — the deploy runner reads this to build image URLs, while uploads happen locally with credentials from .env. Leave r2_public_base empty to bundle thumbnails into the site instead.",
- "r2_public_base": "",
+ "r2_public_base": "https://pub-f75027cb6c72486eab43e77b500919ca.r2.dev",
  "r2_prefix": "thumbs"
 }
