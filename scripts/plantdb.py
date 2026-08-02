@@ -541,6 +541,34 @@ def cmd_refresh_gps(args):
         print(f"{still} record(s) still have no location — their originals carry no GPS.")
 
 
+def cmd_serve(args):
+    """Preview the local app, with caching disabled.
+
+    Browsers hold on to index.html aggressively, so an edit to the app can look
+    like it did nothing — or worse, like the data is broken — until a hard reload.
+    Serving no-store removes that whole class of confusion while iterating.
+    """
+    import http.server, functools
+    cmd_build(args)
+
+    class H(http.server.SimpleHTTPRequestHandler):
+        def end_headers(self):
+            self.send_header("Cache-Control", "no-store, must-revalidate")
+            super().end_headers()
+
+        def log_message(self, *a):
+            pass
+
+    handler = functools.partial(H, directory=str(ROOT))
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", args.port), handler)
+    print(f"Serving {ROOT.name} at http://localhost:{args.port}/   (ctrl-c to stop)")
+    print("Caching is disabled — just reload after a rebuild.")
+    try:
+        srv.serve_forever()
+    except KeyboardInterrupt:
+        print("\nStopped.")
+
+
 def cmd_species(args):
     for s in sorted(load(SPECIES_F, []), key=lambda s: s["common"]):
         print(f"  {s['id']:<28} {s['common']}  ({s['edibility']})")
@@ -571,6 +599,9 @@ if __name__ == "__main__":
                         "use for test photos or anywhere outside the survey area")
     i.set_defaults(func=cmd_ingest)
     sub.add_parser("build", help="regenerate app/data.js").set_defaults(func=cmd_build)
+    sv = sub.add_parser("serve", help="preview the local app in a browser (no caching)")
+    sv.add_argument("--port", type=int, default=8777)
+    sv.set_defaults(func=cmd_serve)
     rg = sub.add_parser("refresh-gps", help="re-read coordinates from the originals in photos/")
     rg.add_argument("--force", action="store_true", help="overwrite coordinates that are already set")
     rg.set_defaults(func=cmd_refresh_gps)
