@@ -9,6 +9,8 @@ app/data.js
 # can publish images, so local-only thumbnails need their own untracked home.
 data/observations-local.json
 thumbs-local/
+# Record of what's already on R2 — local bookkeeping, rebuilt on demand.
+data/r2-manifest.json
 public/
 .DS_Store
 logs/*.log

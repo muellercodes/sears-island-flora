@@ -25,6 +25,8 @@ SPECIES_F, OBS_F = DATA / "species.json", DATA / "observations.json"
 # populated town, where the "precise location is the deliverable" argument does
 # not hold and the upstream reasons for blurring do.
 LOCAL_OBS_F = DATA / "observations-local.json"
+PUBCFG_F = DATA / "publish-config.json"       # tracked: where published images live
+R2_MANIFEST = DATA / "r2-manifest.json"       # gitignored: what we've already uploaded
 PRIVATE_F = DATA / "locations-private.json"   # gitignored: full-precision coords
 INVASIVE_F = DATA / "invasive-reference.json"
 DATA_JS = ROOT / "app" / "data.js"
@@ -484,30 +486,93 @@ def cmd_publish(args):
     kept = public_obs()
     dropped = len(load(OBS_F, [])) - len(kept)
     withheld = len(load(LOCAL_OBS_F, []))
+    # Images either ride along in public/ or come from R2. The public base URL is
+    # not a secret and lives in a tracked config, so the deploy runner can build
+    # correct URLs without ever holding credentials — uploads happen locally.
+    cfg = load(PUBCFG_F, {})
+    base = (cfg.get("r2_public_base") or "").rstrip("/")
+    prefix = (cfg.get("r2_prefix") or "thumbs").strip("/")
     for o in kept:
         o.pop("hash", None)
-        o["thumb"] = f"thumbs/{o['file']}"   # public/ has one flat thumbs dir
+        o["thumb"] = f"{base}/{prefix}/{o['file']}" if base else f"thumbs/{o['file']}"
     payload = {"species": enriched_species(), "observations": kept,
                "generated": datetime.datetime.now().strftime("%Y-%m-%d %H:%M")}
     (pub / "app" / "data.js").write_text("window.PLANT_DB = " + json.dumps(payload, indent=1) + ";\n")
 
-    # Copy only the thumbnails the published data actually references — that way a
-    # rejected (or deleted) observation can't leave an orphan image behind.
-    (pub / "thumbs").mkdir(parents=True, exist_ok=True)
     n = 0
-    for o in kept:
-        t = THUMBS / o["file"]
-        if t.exists():
-            shutil.copy2(t, pub / "thumbs" / t.name)
-            n += 1
+    if base:
+        n = upload_thumbs(kept, prefix, args)
+    else:
+        # Copy only the thumbnails the published data actually references — that way
+        # a rejected (or deleted) observation can't leave an orphan image behind.
+        (pub / "thumbs").mkdir(parents=True, exist_ok=True)
+        for o in kept:
+            t = THUMBS / o["file"]
+            if t.exists():
+                shutil.copy2(t, pub / "thumbs" / t.name)
+                n += 1
     (pub / ".nojekyll").touch()
     size = sum(f.stat().st_size for f in pub.rglob("*") if f.is_file()) / 1e6
-    print(f"Built public/ — {len(payload['species'])} species, {n} thumbnails, {size:.1f} MB.")
+    where = f"{n} thumbnail(s) on R2" if base else f"{n} thumbnails bundled"
+    print(f"Built public/ — {len(payload['species'])} species, {where}, {size:.1f} MB.")
     if dropped:
         print(f"Withheld {dropped} screened-out photo(s) — not published.")
     if withheld:
         print(f"Withheld {withheld} local-only record(s) from {LOCAL_OBS_F.name} — not published.")
     print("Full-resolution originals stay local in photos/ and are never published.")
+
+
+def upload_thumbs(kept, prefix, args):
+    """Push any thumbnail R2 doesn't already have. Returns the number now hosted.
+
+    A manifest of what's been uploaded (keyed by content hash) keeps this cheap on
+    re-runs — at survey scale, re-uploading thousands of unchanged images every
+    publish would dominate the run.
+    """
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+    import r2
+
+    have = load(R2_MANIFEST, {})
+    todo = []
+    for o in kept:
+        t = THUMBS / o["file"]
+        if not t.exists():
+            continue
+        h = sha(t)
+        if have.get(o["file"]) != h:
+            todo.append((o["file"], t, h))
+
+    if getattr(args, "no_upload", False):
+        if todo:
+            print(f"  ! {len(todo)} thumbnail(s) not on R2 and --no-upload was set — "
+                  "the published site will have broken images until you upload them.")
+        return len(have)
+
+    if not todo:
+        return len(have)
+
+    cfg = r2.config()
+    if not cfg:
+        # CI has no credentials by design; it only rebuilds HTML and URLs.
+        print(f"  ! {len(todo)} thumbnail(s) need uploading but R2 credentials are not set "
+              f"({', '.join(r2.missing_vars())}).")
+        print("    Run publish locally to upload them, or set --no-upload to acknowledge.")
+        sys.exit(1)
+
+    print(f"Uploading {len(todo)} new thumbnail(s) to R2...")
+    done = 0
+    for name, path, h in todo:
+        try:
+            r2.put(cfg, f"{prefix}/{name}", path.read_bytes())
+        except r2.R2Error as e:
+            save(R2_MANIFEST, have)   # keep what did succeed
+            sys.exit(f"Upload failed: {e}\nNothing published — fix this and re-run.")
+        have[name] = h
+        done += 1
+        if done % 25 == 0 or done == len(todo):
+            print(f"  {done}/{len(todo)}")
+    save(R2_MANIFEST, have)
+    return len(have)
 
 
 def cmd_refresh_gps(args):
@@ -607,7 +672,10 @@ if __name__ == "__main__":
     rg.set_defaults(func=cmd_refresh_gps)
     sub.add_parser("species", help="list species ids").set_defaults(func=cmd_species)
     sub.add_parser("todo", help="list photos not yet identified").set_defaults(func=cmd_todo)
-    sub.add_parser("publish", help="build public/ with GPS scrubbed, ready to deploy").set_defaults(func=cmd_publish)
+    pb = sub.add_parser("publish", help="build public/, uploading images to R2 if configured")
+    pb.add_argument("--no-upload", action="store_true",
+                    help="skip the R2 upload (the deploy runner uses this — it has no credentials)")
+    pb.set_defaults(func=cmd_publish)
     sub.add_parser("scrub", help="strip EXIF from thumbnails and blur tracked coordinates").set_defaults(func=cmd_scrub)
     sub.add_parser("verify", help="check nothing tracked carries precise location data").set_defaults(func=cmd_verify)
     inv = sub.add_parser("invasives", help="survey report: non-native species with dates and locations")

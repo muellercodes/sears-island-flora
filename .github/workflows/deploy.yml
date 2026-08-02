@@ -25,7 +25,9 @@ jobs:
       - name: Privacy check (fails the build if EXIF or precise GPS is present)
         run: python3 scripts/plantdb.py verify
       - name: Build public/
-        run: python3 scripts/plantdb.py publish
+        # --no-upload: the runner has no R2 credentials by design. Images are
+        # uploaded from the machine that ingested them; this only builds URLs.
+        run: python3 scripts/plantdb.py publish --no-upload
       - uses: actions/configure-pages@v5
         with:
           enablement: true   # turn Pages on automatically instead of requiring a manual Settings step

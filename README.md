@@ -96,6 +96,56 @@ file a record lives in *is* the marker — there is no flag to forget to set.
 records into it so the local map can show them. The deploy workflow regenerates it, and
 `publish` writes `public/` from the source JSON rather than reading that file back.
 
+## Image hosting
+
+Thumbnails can either be bundled into the published site or served from Cloudflare R2.
+Bundling is the default and is fine for a few hundred photos; past that, git history
+becomes the problem, because it is permanent — deleting a photo later does not shrink
+the repo, and a survey heading for thousands of images would push it past GitHub's
+recommended 1 GB and the Pages site limit.
+
+R2 is the escape hatch: 10 GB free, and unlike S3 the egress is free, which is the
+whole point for serving images.
+
+**Setup.** Create a bucket, enable public access on it, and make an API token scoped to
+*Object Read & Write* for that bucket. Then put the credentials in `.env` (gitignored,
+and already sourced by `autopilot.sh`):
+
+```bash
+R2_ACCOUNT_ID=...
+R2_ACCESS_KEY_ID=...
+R2_SECRET_ACCESS_KEY=...
+R2_BUCKET=sears-island-flora
+```
+
+Check them before a real run — this uploads a single tiny object and reports:
+
+```bash
+python3 scripts/r2.py
+```
+
+Then set the public base URL in `data/publish-config.json` (the r2.dev subdomain from
+the bucket's public-access settings, or a custom domain):
+
+```json
+{ "r2_public_base": "https://pub-xxxxxxxx.r2.dev", "r2_prefix": "thumbs" }
+```
+
+Once that is set, `publish` uploads any thumbnail R2 doesn't already have and writes
+absolute URLs into the site. A gitignored `data/r2-manifest.json` records what has been
+uploaded, keyed by content hash, so re-publishing doesn't re-send thousands of unchanged
+images.
+
+**Then make the cutover** — add `thumbs/` to `.gitignore` and `git rm -r --cached thumbs`.
+That is the step that actually keeps the repo small; until you take it, images are in
+git *and* on R2.
+
+The split of responsibilities is deliberate: the public base URL is not a secret and is
+tracked, so the deploy runner can build correct image URLs, while credentials stay local
+and uploads happen on the machine that ingested the photos. The runner publishes with
+`--no-upload` and never holds a credential. If an upload fails, `publish` stops before
+writing anything, so the site never goes out referencing images that aren't there.
+
 ## Map
 
 The **Map** view plots every located record on OpenStreetMap tiles. Markers are the
