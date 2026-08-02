@@ -144,7 +144,6 @@
   .pcard .cap .t { font-size:11px; color:var(--muted); margin-top:3px; }
 
   .empty { color:var(--muted); padding:50px 0; text-align:center; }
-  footer { color:var(--muted); font-size:12.5px; margin-top:48px; border-top:1px solid var(--line); padding-top:18px; }
   code { background:var(--line); padding:2px 6px; border-radius:5px; font-size:12.5px; }
   #lightbox::backdrop { background:rgba(0,0,0,.9); }
   #lightbox img { max-width:100%; max-height:90vh; display:block; margin:0 auto; border-radius:8px; }
@@ -255,11 +254,6 @@
   <p class="count" id="count"></p>
   <div id="view"></div>
 
-  <footer>
-    <p>Generated from <span id="nphotos"></span> photos · <span id="gen"></span></p>
-    <p>Add more photos: <code>python3 scripts/plantdb.py ingest ~/path/to/folder</code> — then
-       <code>python3 scripts/plantdb.py todo</code> to see what needs naming.</p>
-  </footer>
 </main>
 
 <dialog id="sheet"><div class="sheet" id="sheet-content"></div></dialog>
@@ -692,8 +686,6 @@ $("lightbox").onclick = () => $("lightbox").close();
   $("hdr-sub").textContent = `${OBS.length} photos`
     + (batches.length === 1 ? ` · ${batches[0]}`
        : dates.length ? ` · ${dates[0]}${dates.at(-1) !== dates[0] ? "–" + dates.at(-1) : ""}` : "");
-  $("nphotos").textContent = OBS.length;
-  $("gen").textContent = "built " + (DB.generated || "");
   render();
 })();
 </script>
