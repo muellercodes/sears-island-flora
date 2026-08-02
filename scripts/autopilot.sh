@@ -56,11 +56,24 @@ else
 fi
 
 # 3. Publish — but never push anything carrying precise location data.
+# verify covers EXIF, coordinate precision, and whether records fall inside the
+# survey area. The area check turns binding the first time a real Sears Island
+# record is published, so a run can start failing here purely because stand-in
+# data is still in the published set — the log says which.
 if ! $PY scripts/plantdb.py verify >>"$LOG" 2>&1; then
-  say "ABORTED: privacy check failed — nothing pushed. Run: python3 scripts/plantdb.py scrub"
+  say "ABORTED: verify failed — nothing pushed. Last lines of the log:"
+  tail -n 12 "$LOG" | sed 's/^/    /'
   exit 1
 fi
-$PY scripts/plantdb.py publish >>"$LOG" 2>&1
+
+# Must not fall through on failure: ingest and identify have already written to
+# data/, so committing after a failed publish would push records whose images
+# never reached R2 — a site full of broken photos.
+if ! $PY scripts/plantdb.py publish >>"$LOG" 2>&1; then
+  say "ABORTED: publish failed — nothing pushed. Last lines of the log:"
+  tail -n 12 "$LOG" | sed 's/^/    /'
+  exit 1
+fi
 
 if [ -n "$(git status --porcelain)" ]; then
   git add -A

@@ -213,6 +213,26 @@ Forked from a family foraging guide. Four inversions, each for a reason:
 Foraging notes are retained as secondary detail — they're accurate and occasionally
 useful — but they are not what this site is for.
 
+## Is it ready?
+
+```bash
+python3 scripts/plantdb.py doctor
+```
+
+Reports what is configured and what still blocks a real run — venv, API key, R2
+credentials, survey area, leftover stand-in data, watcher. Exits non-zero while
+anything is outstanding.
+
+### Where the API key lives
+
+`ANTHROPIC_API_KEY` is used by `identify.py` only, which runs on your machine at
+ingest time. **The published site never uses it.** The site is static HTML, JS and
+JSON; identification has already happened by the time anything is published, so
+there is no key in the browser, none in the repo, and none in GitHub Actions. The
+deploy workflow only rebuilds HTML from committed JSON.
+
+The key lives in `.env`, which is gitignored and sourced by `autopilot.sh`.
+
 ## Survey area
 
 `survey_area` in `data/publish-config.json` bounds where survey records may come from.

@@ -700,6 +700,69 @@ def cmd_refresh_gps(args):
         print(f"{still} record(s) still have no location — their originals carry no GPS.")
 
 
+def cmd_doctor(args):
+    """Report what is configured and what still blocks a real survey run."""
+    ok, todo = [], []
+
+    def check(cond, good, bad):
+        (ok if cond else todo).append(good if cond else bad)
+
+    env = ROOT / ".env"
+    if env.exists():
+        for line in env.read_text().splitlines():
+            if "=" in line and not line.strip().startswith("#"):
+                k, v = line.split("=", 1)
+                os.environ.setdefault(k.strip(), v.strip())
+
+    venv = ROOT / ".venv" / "bin" / "python"
+    check(venv.exists(), "Python venv present",
+          "No .venv — run: python3 -m venv .venv && .venv/bin/pip install anthropic")
+    if venv.exists():
+        has = subprocess.run([str(venv), "-c", "import anthropic"], capture_output=True).returncode == 0
+        check(has, "anthropic SDK installed", "anthropic SDK missing — .venv/bin/pip install anthropic")
+
+    check(env.exists(), ".env present (gitignored)", "No .env — identification and R2 read their secrets from it")
+    check(bool(os.environ.get("ANTHROPIC_API_KEY")), "ANTHROPIC_API_KEY set",
+          "ANTHROPIC_API_KEY not set — identify.py cannot run")
+
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+    import r2
+    cfg = load(PUBCFG_F, {})
+    check(bool(cfg.get("r2_public_base")), "R2 public base URL configured",
+          "r2_public_base empty in data/publish-config.json — images would be bundled into git")
+    if r2.config():
+        good, msg = r2.check(r2.config())
+        check(good, "R2 S3 credentials work", f"R2 credentials rejected: {msg}")
+    else:
+        todo.append("R2 S3 credentials not set — uploads fall back to wrangler, whose OAuth "
+                    "expires and cannot refresh unattended. Required before the watcher runs.")
+
+    area = cfg.get("survey_area")
+    check(bool(area), f"Survey area set ({area.get('name')})" if area else "",
+          "No survey_area — nothing stops out-of-area photos being published")
+    if area:
+        pub = public_obs()
+        ac = area_check(pub)
+        if ac and ac[2] and not ac[3]:
+            todo.append(f"{len(ac[2])} published record(s) are stand-in data outside "
+                        f"{area.get('name')} — scrub before or as the first island batch lands")
+
+    check(bool(cfg.get("notice")) is False, "No proof-of-concept notice (real data)",
+          "Proof-of-concept notice still shown — remove `notice` from publish-config.json when real data lands")
+
+    plist = pathlib.Path.home() / "Library/LaunchAgents/com.mueller.searsisland.plist"
+    check(plist.exists(), "Watcher installed",
+          "Watcher not installed — ./scripts/install-watcher.sh <folder> (optional; manual runs work)")
+
+    print("READY:")
+    for x in ok:
+        print(f"  ok   {x}")
+    print("\nSTILL NEEDED:" if todo else "\nNothing outstanding.")
+    for x in todo:
+        print(f"  --   {x}")
+    return 1 if todo else 0
+
+
 def cmd_remove(args):
     """Delete records entirely — from the data, from git, and from R2.
 
@@ -868,6 +931,7 @@ if __name__ == "__main__":
                         "use for test photos or anywhere outside the survey area")
     i.set_defaults(func=cmd_ingest)
     sub.add_parser("build", help="regenerate app/data.js").set_defaults(func=cmd_build)
+    sub.add_parser("doctor", help="report what is configured and what still blocks a run").set_defaults(func=cmd_doctor)
     rm = sub.add_parser("remove", help="delete records, their thumbnails and their R2 objects")
     rm.add_argument("--batch", help="every record from this batch")
     rm.add_argument("--file", nargs="*", help="these specific filenames")
