@@ -552,24 +552,38 @@ def upload_thumbs(kept, prefix, args):
         return len(have)
 
     cfg = r2.config()
-    if not cfg:
+    bucket = cfg["R2_BUCKET"] if cfg else load(PUBCFG_F, {}).get("r2_bucket", "")
+    via_wrangler = not cfg and bucket and shutil.which("npx")
+
+    if not cfg and not via_wrangler:
         # CI has no credentials by design; it only rebuilds HTML and URLs.
         print(f"  ! {len(todo)} thumbnail(s) need uploading but R2 credentials are not set "
               f"({', '.join(r2.missing_vars())}).")
-        print("    Run publish locally to upload them, or set --no-upload to acknowledge.")
+        print("    Run publish locally to upload them, or pass --no-upload to acknowledge.")
         sys.exit(1)
 
-    print(f"Uploading {len(todo)} new thumbnail(s) to R2...")
+    how = "S3 API" if cfg else "wrangler (slower — one process per file)"
+    print(f"Uploading {len(todo)} new thumbnail(s) to R2 via {how}...")
     done = 0
     for name, path, h in todo:
+        key = f"{prefix}/{name}"
         try:
-            r2.put(cfg, f"{prefix}/{name}", path.read_bytes())
-        except r2.R2Error as e:
+            if cfg:
+                r2.put(cfg, key, path.read_bytes())
+            else:
+                r = subprocess.run(
+                    ["npx", "wrangler", "r2", "object", "put", f"{bucket}/{key}",
+                     "--file", str(path), "--content-type", "image/jpeg", "--remote"],
+                    capture_output=True, text=True, timeout=120)
+                if r.returncode != 0:
+                    raise r2.R2Error(f"{key}: wrangler exited {r.returncode} — "
+                                     f"{(r.stderr or r.stdout).strip()[:200]}")
+        except Exception as e:
             save(R2_MANIFEST, have)   # keep what did succeed
             sys.exit(f"Upload failed: {e}\nNothing published — fix this and re-run.")
         have[name] = h
         done += 1
-        if done % 25 == 0 or done == len(todo):
+        if done % 10 == 0 or done == len(todo):
             print(f"  {done}/{len(todo)}")
     save(R2_MANIFEST, have)
     return len(have)
@@ -604,6 +618,55 @@ def cmd_refresh_gps(args):
     still = sum(1 for o in load_obs() if not o.get("lat"))
     if still:
         print(f"{still} record(s) still have no location — their originals carry no GPS.")
+
+
+def cmd_promote(args):
+    """Move local-only records into the published set.
+
+    Deliberately explicit and one-directional in intent: publishing a record makes
+    its precise coordinates public, and a git push cannot be taken back. Prints
+    exactly what will become public and requires --yes to act.
+    """
+    obs = load_obs()
+    sel = [o for o in obs if o.get("local_only")
+           and (not args.batch or o.get("batch") == args.batch)
+           and (not args.file or o["file"] in set(args.file))]
+    if not sel:
+        print("Nothing matches — no local-only records with that batch/file.")
+        return
+
+    lats = [float(o["lat"]) for o in sel if o.get("lat")]
+    lons = [float(o["lon"]) for o in sel if o.get("lon")]
+    print(f"{len(sel)} record(s) would become public, with precise coordinates:\n")
+    for o in sel[:12]:
+        print(f"  {o['file'][:12]}…  {o.get('species_id','?'):28} {o.get('lat','')}, {o.get('lon','')}")
+    if len(sel) > 12:
+        print(f"  ... and {len(sel) - 12} more")
+    if lats:
+        print(f"\nThey span {(max(lats)-min(lats))*111000:.0f} m N-S by "
+              f"{(max(lons)-min(lons))*79000:.0f} m E-W, centred on "
+              f"{sum(lats)/len(lats):.5f}, {sum(lons)/len(lons):.5f}")
+        print("Check that against where you live before publishing — a tight cluster of")
+        print("dated, precise points describes a routine, not just a plant list.")
+
+    if not args.yes:
+        print("\nNothing changed. Re-run with --yes to publish these.")
+        return
+
+    files = {o["file"] for o in sel}
+    moved = 0
+    for o in obs:
+        if o.get("local_only") and o["file"] in files:
+            src, dst = THUMBS_LOCAL / o["file"], THUMBS / o["file"]
+            if src.exists():
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(src), str(dst))
+            o.pop("local_only", None)
+            moved += 1
+    save_obs(obs)
+    cmd_build(args)
+    print(f"\nPromoted {moved} record(s). They are now in {OBS_F.name} and will publish.")
+    print("To undo before pushing:  git checkout -- data/observations.json")
 
 
 def cmd_serve(args):
@@ -664,6 +727,11 @@ if __name__ == "__main__":
                         "use for test photos or anywhere outside the survey area")
     i.set_defaults(func=cmd_ingest)
     sub.add_parser("build", help="regenerate app/data.js").set_defaults(func=cmd_build)
+    pr = sub.add_parser("promote", help="move local-only records into the published set")
+    pr.add_argument("--batch", help="only records from this batch")
+    pr.add_argument("--file", nargs="*", help="only these specific filenames")
+    pr.add_argument("--yes", action="store_true", help="actually do it (otherwise just previews)")
+    pr.set_defaults(func=cmd_promote)
     sv = sub.add_parser("serve", help="preview the local app in a browser (no caching)")
     sv.add_argument("--port", type=int, default=8777)
     sv.set_defaults(func=cmd_serve)

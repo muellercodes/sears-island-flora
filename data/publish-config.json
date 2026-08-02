@@ -1,5 +1,6 @@
 {
- "_comment": "Where published thumbnails are served from. Not a secret — the deploy runner reads this to build image URLs, while uploads happen locally with credentials from .env. Leave r2_public_base empty to bundle thumbnails into the site instead.",
+ "_comment": "Where published thumbnails are served from. Not a secret \u2014 the deploy runner reads this to build image URLs, while uploads happen locally. r2_bucket lets publish fall back to wrangler when S3 credentials aren't set.",
  "r2_public_base": "https://pub-f75027cb6c72486eab43e77b500919ca.r2.dev",
- "r2_prefix": "thumbs"
+ "r2_prefix": "thumbs",
+ "r2_bucket": "sears-island-flora"
 }
