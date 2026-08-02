@@ -5,10 +5,13 @@ __pycache__/
 # The deploy workflow regenerates it, and writes public/ from the source JSON.
 app/data.js
 # Records kept off the published site entirely (test photos, anywhere outside
-# the survey area), and their thumbnails. thumbs/ is tracked so the deploy runner
-# can publish images, so local-only thumbnails need their own untracked home.
+# the survey area), and their thumbnails.
 data/observations-local.json
 thumbs-local/
+# Published thumbnails live on R2, not in git — history is permanent, and a survey
+# heading for thousands of images would bloat the repo with no way to shrink it.
+# The deploy runner needs no images: data.js carries absolute R2 URLs.
+thumbs/
 # Record of what's already on R2 — local bookkeeping, rebuilt on demand.
 data/r2-manifest.json
 public/

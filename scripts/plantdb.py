@@ -14,9 +14,9 @@ import argparse, hashlib, json, os, pathlib, shutil, subprocess, sys, datetime
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 PHOTOS, THUMBS, DATA = ROOT / "photos", ROOT / "thumbs", ROOT / "data"
-# thumbs/ is tracked — it's the only way the deploy runner gets images. So a
-# local-only photo's thumbnail needs somewhere gitignored to live, or `git add -A`
-# in autopilot.sh would commit it regardless of where its record is stored.
+# Both thumbnail directories are gitignored: published images are served from R2,
+# so git never needs them. The split still matters — it keeps local-only images
+# out of any future bundled build and away from the upload path entirely.
 THUMBS_LOCAL = ROOT / "thumbs-local"
 SPECIES_F, OBS_F = DATA / "species.json", DATA / "observations.json"
 # Local-only records: gitignored, so they can never be committed or published.
