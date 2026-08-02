@@ -267,6 +267,10 @@ def main():
             o["confidence"] = "rejected"
             o["note"] = f"Screened out: {reason}"
             o["rejected"] = True
+            # Delete the thumbnail. thumbs/ is tracked in git — it's how the deploy
+            # runner gets images — so leaving a screened-out photo there would commit
+            # it to a public repo forever. The original stays in gitignored photos/.
+            thumb.unlink(missing_ok=True)
             rejected += 1
             print(f"  [{i}/{len(pending)}] {o['file']}: REJECTED — {reason[:60]}")
             save(OBS_F, obs)

@@ -315,7 +315,7 @@ function shotGrid(list, s, secondary = false) {
   return `<div class="shots">${list.map(o => {
     const subject = SP[o.species_id];
     return `<figure class="shot" style="margin:0">
-      <img loading="lazy" src="thumbs/${esc(o.file)}" data-full="photos/${esc(o.file)}" alt="${esc(s.common)}">
+      <img loading="lazy" src="thumbs/${esc(o.file)}" data-full="thumbs/${esc(o.file)}" alt="${esc(s.common)}">
       <figcaption class="cap">
         ${secondary
           ? `<span class="conf" style="color:var(--muted)">filed under ${esc(subject ? subject.common : o.species_id)}</span><br>`

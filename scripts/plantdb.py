@@ -330,7 +330,11 @@ def cmd_verify(args):
 
 
 def cmd_publish(args):
-    """Assemble a public/ folder: app + thumbnails + GPS-scrubbed data."""
+    """Assemble a public/ folder: app + thumbnails + survey data.
+
+    Coordinates are published at full precision — see the note at the top of this
+    file. Screened-out photos are withheld entirely.
+    """
     cmd_build(args)
     pub = ROOT / "public"
     if pub.exists():
@@ -338,23 +342,33 @@ def cmd_publish(args):
     (pub / "app").mkdir(parents=True)
     shutil.copy2(ROOT / "index.html", pub / "index.html")
 
-    # Round coordinates to ~1km so the published copy doesn't map a child's walking route.
     payload = json.loads((DATA_JS).read_text().split("=", 1)[1].rsplit(";", 1)[0])
-    for o in payload["observations"]:
-        for k in ("lat", "lon"):
-            if o.get(k):
-                try:
-                    o[k] = f"{round(float(o[k]), 2):.2f}"
-                except ValueError:
-                    o[k] = ""
+
+    # Screened-out photos never leave the machine. They stay in observations.json so the
+    # pipeline doesn't re-process them, but by definition a rejected photo is one that
+    # isn't vegetation — someone's camera roll spilling in — so neither the record nor
+    # its thumbnail belongs on a public site.
+    kept = [o for o in payload["observations"] if not o.get("rejected")]
+    dropped = len(payload["observations"]) - len(kept)
+    payload["observations"] = kept
+    for o in kept:
         o.pop("hash", None)
     (pub / "app" / "data.js").write_text("window.PLANT_DB = " + json.dumps(payload, indent=1) + ";\n")
 
-    shutil.copytree(THUMBS, pub / "thumbs")
+    # Copy only the thumbnails the published data actually references — that way a
+    # rejected (or deleted) observation can't leave an orphan image behind.
+    (pub / "thumbs").mkdir(parents=True, exist_ok=True)
+    n = 0
+    for o in kept:
+        t = THUMBS / o["file"]
+        if t.exists():
+            shutil.copy2(t, pub / "thumbs" / t.name)
+            n += 1
     (pub / ".nojekyll").touch()
-    n = len(list((pub / "thumbs").glob("*")))
     size = sum(f.stat().st_size for f in pub.rglob("*") if f.is_file()) / 1e6
-    print(f"Built public/ — {n} thumbnails, {size:.1f} MB, coordinates rounded to ~1 km.")
+    print(f"Built public/ — {len(payload['species'])} species, {n} thumbnails, {size:.1f} MB.")
+    if dropped:
+        print(f"Withheld {dropped} screened-out photo(s) — not published.")
     print("Full-resolution originals stay local in photos/ and are never published.")
 
 

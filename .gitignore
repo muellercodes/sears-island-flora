@@ -1,5 +1,6 @@
 photos/
 .venv/
+__pycache__/
 public/
 .DS_Store
 logs/*.log
