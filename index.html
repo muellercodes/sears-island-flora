@@ -5,15 +5,25 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Sears Island Flora Survey</title>
 <style>
+  /* Status colour carries the meaning here, so the five statuses have to stay
+     distinguishable from each other at the size of a 3px marker ring, and hold up
+     against both a light basemap and a dark page. Hues are spread rather than
+     shaded, and each theme gets its own values instead of one set dimmed twice. */
   :root {
-    --bg:#f6f5f1; --panel:#fff; --ink:#1d211c; --muted:#6b7268; --line:#e0ded6;
-    --accent:#3f6b38; --shadow:0 1px 3px rgba(0,0,0,.07),0 6px 20px rgba(0,0,0,.05);
-    --edible:#2e7d32; --caution:#b26a00; --med:#4a6fa5; --inedible:#6b7268; --toxic:#b3261e; --unknown:#8a8f86;
+    --bg:#f7f8f6; --panel:#fff; --ink:#151815; --muted:#646d66; --line:#e4e7e2;
+    --accent:#2f7d4f; --on-accent:#fff; --deep:#0e120f;
+    --shadow:0 1px 2px rgba(20,30,22,.06),0 4px 14px rgba(20,30,22,.06);
+    --shadow-lg:0 2px 6px rgba(20,30,22,.08),0 14px 40px rgba(20,30,22,.12);
+    --edible:#1f7a45; --caution:#c06a08; --med:#3a6ea8; --inedible:#646d66;
+    --toxic:#c62f22; --unknown:#8d938e;
   }
   @media (prefers-color-scheme: dark) {
-    :root { --bg:#14170f; --panel:#1c2018; --ink:#e8eae2; --muted:#9aa294; --line:#2e3428;
-            --accent:#8fbf7f; --shadow:0 1px 3px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.3);
-            --edible:#7cc47f; --caution:#e0a44a; --med:#8fb0dd; --inedible:#9aa294; --toxic:#f2837a; --unknown:#8a8f86; }
+    :root { --bg:#0e1210; --panel:#171d19; --ink:#e8ece9; --muted:#94a09a; --line:#28312c;
+            --accent:#5fcb8b; --on-accent:#0e1210; --deep:#0e1210;
+            --shadow:0 1px 2px rgba(0,0,0,.5),0 4px 16px rgba(0,0,0,.4);
+            --shadow-lg:0 2px 8px rgba(0,0,0,.55),0 18px 48px rgba(0,0,0,.5);
+            --edible:#5fcb8b; --caution:#eda94e; --med:#7fb2ee; --inedible:#94a09a;
+            --toxic:#ff7d6d; --unknown:#8d938e; }
   }
   * { box-sizing:border-box; }
   body { margin:0; background:var(--bg); color:var(--ink);
@@ -35,8 +45,7 @@
   .seg { display:flex; border:1px solid var(--line); border-radius:9px; overflow:hidden; background:var(--panel); }
   .seg button { border:0; background:transparent; color:var(--muted); padding:9px 14px;
     font-size:14px; cursor:pointer; font-family:inherit; }
-  .seg button[aria-pressed=true] { background:var(--accent); color:#fff; }
-  @media (prefers-color-scheme: dark) { .seg button[aria-pressed=true] { color:#14170f; } }
+  .seg button[aria-pressed=true] { background:var(--accent); color:var(--on-accent); }
 
   .chips { display:flex; gap:7px; flex-wrap:wrap; margin-top:10px; }
   .chip { border:1px solid var(--line); background:var(--panel); color:var(--muted);
@@ -58,7 +67,7 @@
   .card { background:var(--panel); border:1px solid var(--line); border-radius:13px; overflow:hidden;
     cursor:pointer; box-shadow:var(--shadow); text-align:left; padding:0; font-family:inherit;
     color:inherit; transition:transform .12s ease, box-shadow .12s ease; display:flex; flex-direction:column; }
-  .card:hover { transform:translateY(-2px); box-shadow:0 4px 8px rgba(0,0,0,.09),0 12px 32px rgba(0,0,0,.09); }
+  .card:hover { transform:translateY(-2px); box-shadow:var(--shadow-lg); border-color:color-mix(in srgb, var(--accent) 35%, var(--line)); }
   .card:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
   .card img { width:100%; aspect-ratio:4/3; object-fit:cover; display:block; background:var(--line); }
   .card img.secondary { opacity:.62; }
@@ -75,20 +84,19 @@
   .card .uses { margin-top:8px; font-size:12.5px; color:var(--muted); }
 
   .badge { font-size:11px; font-weight:700; letter-spacing:.04em; text-transform:uppercase;
-    padding:3px 8px; border-radius:5px; color:#fff; white-space:nowrap; }
+    padding:3px 8px; border-radius:5px; color:var(--on-accent); white-space:nowrap; }
   .b-edible{background:var(--edible)} .b-caution{background:var(--caution)} .b-medicinal{background:var(--med)}
   .b-inedible{background:var(--inedible)} .b-toxic{background:var(--toxic)} .b-unknown{background:var(--unknown)}
   .newflag { background:color-mix(in srgb, var(--caution) 10%, transparent); border:1px solid var(--caution);
     border-radius:10px; padding:13px 16px; margin:0 0 20px; font-size:14px; }
   .newflag h4 { margin:0 0 6px; color:var(--caution); font-size:13px; text-transform:uppercase; letter-spacing:.05em; }
   .newflag p { margin:0; color:var(--ink); }
-  @media (prefers-color-scheme: dark) { .badge { color:#14170f; } }
   .pcount { font-size:12px; color:var(--muted); }
   .danger-flag { color:var(--toxic); font-weight:700; font-size:12px; }
 
   dialog { border:0; padding:0; background:transparent; max-width:920px; width:calc(100% - 32px); }
-  dialog::backdrop { background:rgba(10,14,8,.62); backdrop-filter:blur(3px); }
-  .sheet { background:var(--panel); border-radius:15px; box-shadow:0 24px 70px rgba(0,0,0,.35);
+  dialog::backdrop { background:rgba(8,12,10,.66); backdrop-filter:blur(4px); }
+  .sheet { background:var(--panel); border-radius:16px; box-shadow:var(--shadow-lg);
     max-height:88vh; overflow-y:auto; color:var(--ink); }
   .sheet-head { position:sticky; top:0; background:var(--panel); border-bottom:1px solid var(--line);
     padding:20px 24px 16px; display:flex; justify-content:space-between; gap:16px; align-items:flex-start; z-index:2; }
@@ -159,13 +167,15 @@
   .leaflet-bar.leaflet-control a:hover { background:var(--bg); color:var(--ink); }
   .leaflet-control-attribution { background:rgba(255,255,255,.8) !important; font-size:10px; }
   @media (prefers-color-scheme: dark) {
-    .leaflet-control-attribution { background:rgba(20,23,15,.8) !important; }
+    .leaflet-control-attribution { background:rgba(14,18,16,.82) !important; }
     .leaflet-control-attribution a { color:var(--accent); }
   }
 
   /* Marker = the photo itself, ringed in its regulatory-status colour. */
   .mk { width:44px; height:44px; border-radius:50%; overflow:hidden; border:3px solid var(--unknown);
-        box-shadow:0 2px 6px rgba(0,0,0,.4); background:var(--panel); cursor:pointer; }
+        box-shadow:0 0 0 2px var(--panel), 0 3px 8px rgba(0,0,0,.35); background:var(--panel);
+        cursor:pointer; transition:transform .12s ease; }
+  .leaflet-marker-icon:hover .mk { transform:scale(1.1); }
   .mk img { width:100%; height:100%; object-fit:cover; display:block; }
   .mk.s-regulated{border-color:var(--toxic)} .mk.s-invasive{border-color:var(--caution)}
   .mk.s-introduced{border-color:var(--med)} .mk.s-native{border-color:var(--edible)}
@@ -181,10 +191,34 @@
   .pop .pn { font-size:13.5px; font-weight:600; line-height:1.3; }
   .pop .ps { font-size:11.5px; color:var(--muted); font-style:italic; margin-top:1px; }
   .pop .pm { font-size:11px; color:var(--muted); margin-top:5px; }
-  .pop button { margin-top:8px; width:100%; border:1px solid var(--line); background:var(--bg);
+  .pop .pb button { margin-top:8px; width:100%; border:1px solid var(--line); background:var(--bg);
     color:var(--accent); border-radius:7px; padding:6px; font:inherit; font-size:12px;
     font-weight:600; cursor:pointer; }
+  .pop .pb button:hover { border-color:var(--accent); }
   .map-note { color:var(--muted); font-size:12.5px; margin:10px 2px 0; }
+
+  /* Picker for pins holding several records — past max zoom they cannot be
+     separated on the map, so they have to be selectable here. */
+  .pop-hd { padding:9px 11px; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em;
+    color:var(--muted); border-bottom:1px solid var(--line); font-weight:600; }
+  .pop-list { max-height:min(34vh,230px); overflow-y:auto; -webkit-overflow-scrolling:touch;
+    overscroll-behavior:contain; }
+  .pop-row { display:flex; gap:9px; align-items:center; width:100%; padding:8px 10px;
+    background:transparent; border:0; border-bottom:1px solid var(--line); cursor:pointer;
+    font-family:inherit; color:inherit; text-align:left; }
+  .pop-row:last-child { border-bottom:0; }
+  .pop-row:hover, .pop-row:focus-visible { background:var(--bg); outline:none; }
+  .pop-row img { width:38px; height:38px; border-radius:7px; object-fit:cover; flex:none;
+    background:var(--line); }
+  .pop-row .rt { display:flex; flex-direction:column; gap:2px; min-width:0; }
+  .pop-row .rn { font-size:12.5px; font-weight:600; line-height:1.25; color:var(--ink); }
+  .pop-row .rm { font-size:10.5px; color:var(--muted); display:flex; align-items:center; gap:5px; }
+  .dot { width:8px; height:8px; border-radius:50%; flex:none; background:var(--unknown); }
+  .d-regulated{background:var(--toxic)} .d-invasive{background:var(--caution)}
+  .d-introduced{background:var(--med)} .d-native{background:var(--edible)}
+  .pop-back { width:100%; border:0; border-bottom:1px solid var(--line); background:var(--bg);
+    color:var(--accent); padding:8px 10px; font:inherit; font-size:11.5px; font-weight:600;
+    cursor:pointer; text-align:left; }
 </style>
 </head>
 <body>
@@ -391,6 +425,14 @@ const hasLoc = o => Number.isFinite(parseFloat(o.lat)) && Number.isFinite(parseF
 const llOf = o => [parseFloat(o.lat), parseFloat(o.lon)];
 let mapped = [];   // located records currently on the map
 
+// The map div is written with innerHTML and Leaflet is initialised in a .then().
+// Once Leaflet is cached that promise resolves as a microtask — before the browser
+// has laid the element out — so Leaflet measures a zero-size container, picks zoom
+// 0, and every record collapses into one pin. Waiting two animation frames
+// guarantees layout; the ResizeObserver covers the container changing size later.
+const nextFrame = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+let mapRO = null, fitted = false;
+
 function renderMap(located, unlocated) {
   mapped = located;
   if (!$("map")) {
@@ -406,24 +448,62 @@ function renderMap(located, unlocated) {
     return;
   }
 
-  ensureLeaflet().then(() => {
+  ensureLeaflet().then(nextFrame).then(() => {
+    if (!$("map")) return;                 // view switched away while we waited
     if (!map) {
-      map = L.map("map", { scrollWheelZoom: false });   // don't hijack page scroll on the way past
+      // Direct manipulation, like a real map: wheel/trackpad zooms, pinch zooms,
+      // double-click zooms in, shift-drag boxes a region. The +/- buttons stay for
+      // anyone who wants them.
+      map = L.map("map", {
+        scrollWheelZoom: true, touchZoom: true, doubleClickZoom: true,
+        boxZoom: true, wheelPxPerZoomLevel: 90, zoomSnap: 0.25, zoomDelta: 0.5,
+      });
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         maxZoom: 19,
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
       }).addTo(map);
       markers = L.layerGroup().addTo(map);
-      map.on("click", () => map.scrollWheelZoom.enable());   // opt in once they're using it
       map.on("zoomend", drawMarkers);                        // regroup as pins separate
+      // Reset to the list on every open. setContent on a bound popup sticks, so
+      // without this a pin would reopen on whichever record you last drilled into.
+      map.on("popupopen", e => {
+        openPopup = e.popup;
+        if (e.popup.pinGid != null) {
+          e.popup.setContent(popupHTML(e.popup.pinGid));
+          e.popup.update();
+        }
+      });
+      map.on("popupclose", () => { openPopup = null; });
     }
+    fitted = false;
     map.invalidateSize();
-    map.fitBounds(L.latLngBounds(mapped.map(llOf)).pad(0.25), { maxZoom: 17 });
+    fitMap();
     drawMarkers();
+    watchMapSize();
   }).catch(() => {
     $("map").innerHTML = `<p class="empty">The map couldn't load — check your connection.<br>`
       + `The Species and Photos views work offline.</p>`;
   });
+}
+
+function fitMap() {
+  if (!map || !mapped.length) return;
+  const size = map.getSize();
+  if (!size.x || !size.y) return;   // not laid out yet — watchMapSize will retry
+  map.fitBounds(L.latLngBounds(mapped.map(llOf)).pad(0.25), { maxZoom: 17 });
+  fitted = true;
+}
+
+function watchMapSize() {
+  const el = $("map");
+  if (!el || !window.ResizeObserver) return;
+  if (mapRO) mapRO.disconnect();
+  mapRO = new ResizeObserver(() => {
+    if (!map || !$("map")) return;
+    map.invalidateSize();
+    if (!fitted) { fitMap(); drawMarkers(); }
+  });
+  mapRO.observe(el);
 }
 
 // Group by distance ON SCREEN, not by rounded coordinates. Phone GPS scatters
@@ -437,6 +517,7 @@ const MERGE_PX = 46;   // marker is 44px across
 function drawMarkers() {
   if (!map || !markers) return;
   markers.clearLayers();
+  PIN = [];
   const z = map.getZoom();
   const groups = [];
   mapped.forEach(o => {
@@ -457,16 +538,53 @@ function drawMarkers() {
           + `<img src="${esc(thumbSrc(o))}" alt="${esc(s.common)}" loading="lazy">`
           + `</div>${g.items.length > 1 ? `<span class="cnt">${g.items.length}</span>` : ""}</div>`,
     });
-    L.marker(llOf(o), { icon, title: s.common, alt: s.common, keyboard: true })
+    const gid = String(PIN.push(g.items) - 1);   // popups look their group up by index
+    const mk = L.marker(llOf(o), { icon, title: s.common, alt: s.common, keyboard: true })
       .addTo(markers)
-      .bindPopup(popupHTML(g.items), { closeButton: false, autoPanPadding: [24, 24] });
+      .bindPopup(popupHTML(gid), { closeButton: false, autoPanPadding: [24, 24], maxWidth: 260 });
+    mk.getPopup().pinGid = gid;
   });
 }
 
-function popupHTML(items) {
-  const o = items[0], s = SP[o.species_id] || SP.unknown;
-  const others = [...new Set(items.slice(1).map(x => (SP[x.species_id] || SP.unknown).common))];
+// Pins that merge hold records you cannot separate by zooming — past max zoom the
+// map runs out of room — so the popup has to let you pick from them directly.
+// PIN holds each drawn group; popups address them by index, which survives the
+// re-grouping that happens on every zoom.
+let PIN = [];
+let openPopup = null;
+
+function popupHTML(gid) {
+  const items = PIN[gid] || [];
+  return items.length > 1 ? listHTML(gid, items) : detailHTML(gid, 0);
+}
+
+// Inline handlers stop propagation: a click reaching the map triggers Leaflet's
+// closeOnClick, which would dismiss the popup instead of drilling into the record.
+function listHTML(gid, items) {
+  const rows = items.map((o, i) => {
+    const s = SP[o.species_id] || SP.unknown;
+    return `<button class="pop-row" onclick="event.stopPropagation();pinShow('${gid}',${i})">
+      <img src="${esc(thumbSrc(o))}" alt="">
+      <span class="rt">
+        <span class="rn">${esc(s.common)}</span>
+        <span class="rm"><span class="dot d-${statusOf(s)}"></span>${esc(badgeOf(s).label)}
+          · <span class="conf-${o.confidence}">${esc(o.confidence)}</span></span>
+      </span></button>`;
+  }).join("");
   return `<div class="pop">
+    <div class="pop-hd">${items.length} records at this spot</div>
+    <div class="pop-list">${rows}</div></div>`;
+}
+
+function detailHTML(gid, idx) {
+  const items = PIN[gid] || [];
+  const o = items[idx];
+  if (!o) return `<div class="pop"><div class="pb">Not found.</div></div>`;
+  const s = SP[o.species_id] || SP.unknown;
+  const back = items.length > 1
+    ? `<button class="pop-back" onclick="event.stopPropagation();pinList('${gid}')">&larr; All ${items.length} here</button>` : "";
+  return `<div class="pop">
+    ${back}
     <img src="${esc(thumbSrc(o))}" alt="${esc(s.common)}">
     <div class="pb">
       <div class="pn">${esc(s.common)}</div>
@@ -474,10 +592,19 @@ function popupHTML(items) {
       <div class="pm"><span class="badge ${badgeOf(s).cls}">${badgeOf(s).label}</span>
         · <span class="conf-${o.confidence}">${esc(o.confidence)}</span></div>
       <div class="pm">${esc((o.taken || "").slice(0, 10))} · ${esc(o.lat)}, ${esc(o.lon)}</div>
-      ${others.length ? `<div class="pm">Also at this pin: ${esc(others.join(", "))}</div>` : ""}
+      ${o.note ? `<div class="pm">${esc(o.note)}</div>` : ""}
       <button data-id="${esc(o.species_id)}" onclick="openSheet(this.dataset.id)">Full details</button>
     </div></div>`;
 }
+
+// Swap the open popup's content in place, so picking a record doesn't close it.
+function setPopup(html) {
+  if (!openPopup) return;
+  openPopup.setContent(html);
+  openPopup.update();
+}
+function pinShow(gid, idx) { setPopup(detailHTML(gid, idx)); }
+function pinList(gid) { setPopup(listHTML(gid, PIN[gid] || [])); }
 
 // ---- detail sheet --------------------------------------------------------
 // Photo tiles. `secondary` = this species is visible in the shot but isn't its subject,
