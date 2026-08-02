@@ -170,14 +170,16 @@
  {
   "id": "297F5D45-0DC0-4A61-B549-E28865B3F1A5",
   "file": "297F5D45-0DC0-4A61-B549-E28865B3F1A5.jpg",
-  "species_id": "unknown",
+  "species_id": "wild-rose",
   "confidence": "low",
-  "note": "Woodland edge habitat shot; no single subject in focus.",
+  "note": "Image is rotated 90 degrees and shows a dense roadside/riverbank thicket rather than a single specimen; the dominant shrub on the right has arching canes with odd-pinnate, sharply serrate leaflets in groups of 5-7, consistent with Rosa sp. No flowers or hips are visible, so species is unresolved. FLAG: this could be the regulated invasive multiflora rose (Rosa multiflora) \u2014 check the leaf base for a fringed/comb-like stipule (multiflora) versus a smooth, narrow stipule on native roses, and look for clusters of many small white flowers or dense red hips.",
   "taken": "2026-08-01 18:34:18 +0000",
   "lat": "44.876256",
   "lon": "-68.687989",
   "batch": "orono",
-  "hash": "0d56568f03e2840b"
+  "hash": "0d56568f03e2840b",
+  "id_attempts": 1,
+  "identified": "2026-08-02"
  },
  {
   "id": "228945D4-D7CC-43A5-9F0B-0AEA4038E2A7",
@@ -242,50 +244,58 @@
  {
   "id": "C4F814C3-C003-46EB-AE2E-EB72FFF09BCA",
   "file": "C4F814C3-C003-46EB-AE2E-EB72FFF09BCA.jpg",
-  "species_id": "unknown",
-  "confidence": "low",
-  "note": "Mixed conifer stand \u2014 habitat context.",
+  "species_id": "eastern-hemlock",
+  "confidence": "medium",
+  "note": "Rotated 90\u00b0 habitat shot of a shaded conifer stand: slender gray trunks, fine feathery drooping sprays of short flat needles, and a bare needle-litter floor with mossy hummocks and downed rotting logs \u2014 consistent with an Eastern Hemlock stand, though no cones or close needle detail are visible to confirm. No shrub or herb layer is resolvable enough to identify, and nothing here resembles a watchlist invasive (dense honeysuckle or buckthorn thickets would show as broadleaf shrub layers, absent here).",
   "taken": "2026-08-01 18:36:09 +0000",
   "lat": "44.876544",
   "lon": "-68.688897",
   "batch": "orono",
-  "hash": "a57db24b3713ab3d"
+  "hash": "a57db24b3713ab3d",
+  "id_attempts": 1,
+  "identified": "2026-08-02"
  },
  {
   "id": "CDC68EA0-53C5-4080-B382-DB94E87F912E",
   "file": "CDC68EA0-53C5-4080-B382-DB94E87F912E.jpg",
-  "species_id": "unknown",
+  "species_id": "japanese-knotweed-possible-young-shoot",
   "confidence": "low",
-  "note": "Small heart-leaved seedling on the forest floor; too young to name.",
+  "note": "A single young shoot on forest-floor duff with broadly ovate leaves that have squared-off (truncate) bases and abruptly pointed tips, borne alternately in a zigzag along a reddish-tinged stem \u2014 the classic look of a young Japanese knotweed shoot, which is on Maine's Do Not Sell list. The photo is blurry and does not show the stem nodes, so this is flagged rather than confirmed: check the stem for a hollow, bamboo-like interior with swollen nodes wrapped in a thin papery sheath (ocrea). If the stem is solid with no ocrea, it is more likely a tree seedling (e.g. basswood or birch).",
   "taken": "2026-08-01 18:36:25 +0000",
   "lat": "44.876508",
   "lon": "-68.689008",
   "batch": "orono",
-  "hash": "b73950cf0e56033c"
+  "hash": "b73950cf0e56033c",
+  "id_attempts": 1,
+  "identified": "2026-08-02"
  },
  {
   "id": "759435CF-F8AE-48AF-A0AD-D3CE51FAE0C3",
   "file": "759435CF-F8AE-48AF-A0AD-D3CE51FAE0C3.jpg",
-  "species_id": "unknown",
-  "confidence": "low",
-  "note": "Sapling with alternate doubly-toothed ovate leaves \u2014 possibly hazel or a young birch. Needs catkins or nuts to confirm.",
+  "species_id": "aspen",
+  "confidence": "medium",
+  "note": "Sapling shoot on the forest floor with alternate, broadly ovate leaves bearing coarse rounded (crenate-dentate) teeth, flattened pale petioles, and pale downy new growth at the shoot tip \u2014 consistent with bigtooth aspen (Populus grandidentata). No bark or catkins visible to fully confirm species; it is not a honeysuckle (leaves alternate, not opposite).",
   "taken": "2026-08-01 18:36:37 +0000",
   "lat": "44.876478",
   "lon": "-68.689142",
   "batch": "orono",
-  "hash": "bdd2e2f35d145bb7"
+  "hash": "bdd2e2f35d145bb7",
+  "id_attempts": 1,
+  "identified": "2026-08-02"
  },
  {
   "id": "1F99713B-7473-4397-8202-1209D0F1C621",
   "file": "1F99713B-7473-4397-8202-1209D0F1C621.jpg",
   "species_id": "unknown",
   "confidence": "low",
-  "note": "Hardwood canopy looking up \u2014 habitat context.",
+  "note": "Upward canopy shot of a mixed stand: several smooth, pale-mottled trunks (consistent with aspen or birch) with a leafy deciduous crown above, and darker conifer trunks to the right. No leaf detail, bark close-up, or fruit is resolvable, so I can only record 'mixed deciduous-conifer canopy' rather than a species. A photo of a single trunk's bark plus a leaf held in hand would settle it.",
   "taken": "2026-08-01 18:37:40 +0000",
   "lat": "44.876514",
   "lon": "-68.689447",
   "batch": "orono",
-  "hash": "349dea9394b46bc4"
+  "hash": "349dea9394b46bc4",
+  "id_attempts": 1,
+  "identified": "2026-08-02"
  },
  {
   "id": "0A05CA61-3B64-4E0B-8144-22ABC6809EF4",

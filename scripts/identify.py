@@ -147,6 +147,7 @@ def save(p, o):
 # the record came from — a local-only photo must never be promoted into git.
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from plantdb import load_obs, save_obs, thumb_path  # noqa: E402
+import idcache  # noqa: E402
 
 
 def slugify(name, taken):
@@ -185,6 +186,8 @@ def main():
                     help="stop retrying a photo after this many identification attempts (0 = no cap)")
     ap.add_argument("--retry-exhausted", action="store_true",
                     help="ignore --max-attempts and retry photos that have hit the cap")
+    ap.add_argument("--ignore-cache", action="store_true",
+                    help="re-identify even photos already in the cache (costs money again)")
     ap.add_argument("--model", default=MODEL)
     ap.add_argument("--effort", default=EFFORT, choices=["low", "medium", "high", "xhigh", "max"])
     ap.add_argument("--region", default=os.environ.get("PLANT_REGION", DEFAULT_REGION),
@@ -231,7 +234,9 @@ def main():
 
     print(f"Identifying {len(pending)} photo(s) with {args.model} at effort={args.effort}.")
     print(f"Region: {args.region}\n")
-    done = failed = rejected = 0
+    done = failed = rejected = reused = 0
+    spend = {"in": 0, "out": 0, "cache_read": 0, "cache_write": 0}
+    cache = idcache.connect()
     for i, o in enumerate(pending, 1):
         thumb = thumb_path(o)
         if not thumb.exists():
@@ -241,47 +246,74 @@ def main():
 
         o["id_attempts"] = o.get("id_attempts", 0) + 1   # counted even if the call fails
         save_obs(obs)
-        img = base64.standard_b64encode(thumb.read_bytes()).decode()
-        prompt = (
-            f"{describe(o)}\n\n"
-            "Species already in this guide — reuse one of these ids if the photo shows the same "
-            f"organism:\n{catalogue}\n\n"
-            "Identify the main plant or fungus in this photograph."
-        )
-        try:
-            resp = client.messages.create(
-                model=args.model,
-                max_tokens=MAX_TOKENS,
-                system=SYSTEM.format(region=args.region),
-                output_config={
-                    "effort": args.effort,
-                    "format": {"type": "json_schema", "schema": SCHEMA},
-                },
-                messages=[{"role": "user", "content": [
-                    {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": img}},
-                    {"type": "text", "text": prompt},
-                ]}],
+        # Already paid for this image? The cache is keyed by content hash, so this
+        # survives a reset of observations.json, a re-ingest under a new filename,
+        # or a remove-then-re-add. Nothing is bought twice.
+        cached = idcache.get(cache, o.get("hash"))
+        cached_sid = None
+        if cached is not None and not args.ignore_cache:
+            r, cached_sid = cached["result"], cached.get("species_id")
+            reused += 1
+            print(f"  [{i}/{len(pending)}] {o['file']}: cached (no API call)")
+        else:
+            o["id_attempts"] = o.get("id_attempts", 0) + 1   # counted even if the call fails
+            save_obs(obs)
+            img = base64.standard_b64encode(thumb.read_bytes()).decode()
+            prompt = (
+                f"{describe(o)}\n\n"
+                "Identify the main plant or fungus in this photograph."
             )
-        except Exception as e:
-            print(f"  [{i}/{len(pending)}] {o['file']}: API error — {e}")
-            failed += 1
-            continue
+            try:
+                resp = client.messages.create(
+                    model=args.model,
+                    max_tokens=MAX_TOKENS,
+                    # The system block carries the instructions AND the species
+                    # catalogue, and is marked cacheable. Render order is
+                    # system -> messages, so everything stable must live here:
+                    # the image varies per photo, and anything after it in the
+                    # prefix cannot be cached.
+                    system=[{
+                        "type": "text",
+                        "text": SYSTEM.format(region=args.region)
+                                + "\n\nSpecies already in this guide — reuse one of these ids if "
+                                  f"the photo shows the same organism:\n{catalogue}",
+                        "cache_control": {"type": "ephemeral"},
+                    }],
+                    output_config={
+                        "effort": args.effort,
+                        "format": {"type": "json_schema", "schema": SCHEMA},
+                    },
+                    messages=[{"role": "user", "content": [
+                        {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": img}},
+                        {"type": "text", "text": prompt},
+                    ]}],
+                )
+            except Exception as e:
+                print(f"  [{i}/{len(pending)}] {o['file']}: API error — {e}")
+                failed += 1
+                continue
 
-        if resp.stop_reason == "refusal":
-            print(f"  [{i}/{len(pending)}] {o['file']}: declined by safety classifier, skipping")
-            failed += 1
-            continue
-        if resp.stop_reason == "max_tokens":
-            print(f"  [{i}/{len(pending)}] {o['file']}: response truncated, skipping (raise MAX_TOKENS)")
-            failed += 1
-            continue
+            if resp.stop_reason == "refusal":
+                print(f"  [{i}/{len(pending)}] {o['file']}: declined by safety classifier, skipping")
+                failed += 1
+                continue
+            if resp.stop_reason == "max_tokens":
+                print(f"  [{i}/{len(pending)}] {o['file']}: response truncated, skipping (raise MAX_TOKENS)")
+                failed += 1
+                continue
 
-        text = next((b.text for b in resp.content if b.type == "text"), None)
-        if not text:
-            print(f"  [{i}/{len(pending)}] {o['file']}: empty response, skipping")
-            failed += 1
-            continue
-        r = json.loads(text)
+            text = next((b.text for b in resp.content if b.type == "text"), None)
+            if not text:
+                print(f"  [{i}/{len(pending)}] {o['file']}: empty response, skipping")
+                failed += 1
+                continue
+            r = json.loads(text)
+            fresh = resp.usage
+            u = resp.usage
+            spend["in"] += u.input_tokens or 0
+            spend["out"] += u.output_tokens or 0
+            spend["cache_read"] += getattr(u, "cache_read_input_tokens", 0) or 0
+            spend["cache_write"] += getattr(u, "cache_creation_input_tokens", 0) or 0
 
         # Screening gate: anything that isn't a vegetation photo never enters the survey.
         if not r.get("is_survey_photo", True):
@@ -306,9 +338,24 @@ def main():
             r["cautions"] = ["Identified from a photograph only — never eat a wild mushroom on a photo ID."] \
                 + r.get("cautions", [])
 
-        if r["matches_existing_id"] and r["matches_existing_id"] in by_id:
+        if cached_sid and (cached_sid in by_id or cached_sid == "unknown"):
+            # Replaying a cached result must resolve to the same species it did the
+            # first time. Without this, a replay re-runs the creation path, finds the
+            # slug taken, and mints a duplicate ("-2") of a species we already have.
+            sid = cached_sid
+            label = f"→ {by_id.get(sid, {}).get('common', sid)}"
+        elif r["matches_existing_id"] and r["matches_existing_id"] in by_id:
             sid = r["matches_existing_id"]
             label = f"→ {by_id[sid]['common']}"
+        elif r["kind"] == "other" and r["confidence"] == "low":
+            # A non-answer, not a species. The prompt asks for kind "other" at low
+            # confidence when the photo cannot support an identification — a habitat
+            # shot, a canopy, a seedling with no diagnostic features. Minting a
+            # catalogue entry for that invents a species that does not exist, and the
+            # catalogue is sent with every subsequent photo. Leave it unknown; the
+            # note still records what was missing, which is the useful part.
+            sid = "unknown"
+            label = "unidentifiable from this photo"
         else:
             sid = slugify(r["common"] or "unnamed", set(by_id))
             entry = {
@@ -335,6 +382,9 @@ def main():
                    " * invasive *" if entry["origin_status"] == "invasive" else "")
             label = f"NEW {entry['common']} [{entry['origin_status']}]{flag}"
 
+        if cached_sid is None:
+            idcache.put(cache, o.get("hash"), o["file"], r, args.model, args.region,
+                        fresh, species_id=sid)
         o["species_id"] = sid
         o["confidence"] = r["confidence"]
         o["note"] = r["note"]
@@ -345,14 +395,20 @@ def main():
         if also:
             o["also"] = also
         done += 1
-        u = resp.usage
-        print(f"  [{i}/{len(pending)}] {o['file']}: {label}  [{r['confidence']}]  "
-              f"{u.input_tokens}in/{u.output_tokens}out")
+        print(f"  [{i}/{len(pending)}] {o['file']}: {label}  [{r['confidence']}]")
 
         save(SPECIES_F, species)   # save as we go — a crash never loses completed work
         save_obs(obs)
 
-    print(f"\nIdentified {done}, screened out {rejected}, failed {failed}.")
+    cin, cout = idcache.PRICES.get(args.model, (0.0, 0.0))
+    run_cost = spend["in"] * cin + spend["out"] * cout
+    print(f"\nIdentified {done}, reused from cache {reused}, screened out {rejected}, failed {failed}.")
+    if spend["in"] or spend["out"]:
+        print(f"This run: {spend['in']:,} in / {spend['out']:,} out  =  ${run_cost:.2f}")
+        if spend["cache_read"] or spend["cache_write"]:
+            print(f"  prompt cache: {spend['cache_read']:,} read, {spend['cache_write']:,} written")
+    if reused:
+        print(f"Skipped {reused} API call(s) — already bought.")
     if done:
         print("Rebuild and publish:  python3 scripts/plantdb.py publish")
 

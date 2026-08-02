@@ -700,6 +700,30 @@ def cmd_refresh_gps(args):
         print(f"{still} record(s) still have no location — their originals carry no GPS.")
 
 
+def cmd_cache(args):
+    """What we have already paid to identify, and what it cost."""
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+    import idcache
+    con = idcache.connect()
+    st = idcache.stats(con)
+    if not st["count"]:
+        print(f"No identifications cached yet ({idcache.DB.relative_to(ROOT)}).")
+        return
+    print(f"{st['count']} identification(s) cached, {st['first']} to {st['last']}")
+    print(f"  tokens: {st['input_tokens']:,} in / {st['output_tokens']:,} out")
+    print(f"  spent:  ${st['cost_usd']:.2f}")
+    for model, n, cost in st["by_model"]:
+        print(f"    {model or '?':<20} {n:>5} photo(s)  ${cost:.2f}")
+    obs = load_obs()
+    have = {h for (h,) in con.execute("SELECT hash FROM identifications")}
+    uncached = [o for o in obs if o.get("hash") and o["hash"] not in have]
+    print(f"\n{len(obs) - len(uncached)}/{len(obs)} record(s) covered by the cache.")
+    if uncached:
+        cin, cout = idcache.PRICES.get("claude-opus-5", (0, 0))
+        est = len(uncached) * (4408 * cin + 750 * cout)
+        print(f"{len(uncached)} would cost about ${est:.2f} to identify at current rates.")
+
+
 def cmd_doctor(args):
     """Report what is configured and what still blocks a real survey run."""
     ok, todo = [], []
@@ -931,6 +955,7 @@ if __name__ == "__main__":
                         "use for test photos or anywhere outside the survey area")
     i.set_defaults(func=cmd_ingest)
     sub.add_parser("build", help="regenerate app/data.js").set_defaults(func=cmd_build)
+    sub.add_parser("cache", help="what we've already paid to identify, and what it cost").set_defaults(func=cmd_cache)
     sub.add_parser("doctor", help="report what is configured and what still blocks a run").set_defaults(func=cmd_doctor)
     rm = sub.add_parser("remove", help="delete records, their thumbnails and their R2 objects")
     rm.add_argument("--batch", help="every record from this batch")
