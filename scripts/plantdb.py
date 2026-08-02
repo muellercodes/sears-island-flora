@@ -110,20 +110,94 @@ def sha(path, blocks=8):
     return h.hexdigest()[:16]
 
 
+# EXIF is read straight out of the file. The obvious alternative, `mdls`, reads
+# Spotlight's index rather than the file — and indexing of a freshly written copy is
+# asynchronous, so ingest queried photos Spotlight had not seen yet and silently got
+# null coordinates for everything. For a survey where location IS the deliverable, a
+# silent empty is the worst possible failure, so this parses the bytes directly.
+_FMT = {1: ("B", 1), 2: ("s", 1), 3: ("H", 2), 4: ("I", 4), 5: ("II", 8),
+        6: ("b", 1), 7: ("s", 1), 9: ("i", 4), 10: ("ii", 8)}
+
+
+def _ifd(d, base, off, order):
+    """Read one IFD, returning {tag: value}."""
+    import struct
+    out = {}
+    if off + 2 > len(d):
+        return out
+    n, = struct.unpack(order + "H", d[off:off + 2])
+    for i in range(n):
+        e = off + 2 + i * 12
+        if e + 12 > len(d):
+            break
+        tag, typ, cnt = struct.unpack(order + "HHI", d[e:e + 8])
+        if typ not in _FMT:
+            continue
+        code, size = _FMT[typ]
+        total = size * cnt
+        if total > 4:
+            ptr, = struct.unpack(order + "I", d[e + 8:e + 12])
+            raw = d[base + ptr: base + ptr + total]
+        else:
+            raw = d[e + 8:e + 8 + total]
+        if len(raw) < total:
+            continue
+        if typ in (2, 7):
+            out[tag] = raw.split(b"\x00")[0].decode("ascii", "replace")
+        elif typ in (5, 10):
+            vals = []
+            for j in range(cnt):
+                num, den = struct.unpack(order + ("II" if typ == 5 else "ii"), raw[j * 8:(j + 1) * 8])
+                vals.append(num / den if den else 0.0)
+            out[tag] = vals
+        else:
+            out[tag] = struct.unpack(order + code * cnt, raw)[0] if cnt == 1 else None
+    return out
+
+
+def _dms(vals, ref):
+    """GPS coordinates are stored as degrees/minutes/seconds rationals."""
+    if not vals or len(vals) < 3:
+        return ""
+    deg = vals[0] + vals[1] / 60 + vals[2] / 3600
+    if str(ref).upper() in ("S", "W"):
+        deg = -deg
+    return f"{deg:.{COORD_DP}f}".rstrip("0").rstrip(".")
+
+
 def exif_of(path):
+    import struct
+    taken = lat = lon = ""
     try:
-        out = subprocess.run(
-            ["mdls", "-name", "kMDItemContentCreationDate", "-name", "kMDItemLatitude",
-             "-name", "kMDItemLongitude", "-raw", str(path)],
-            capture_output=True, text=True, timeout=20).stdout.split("\x00")
+        d = path.read_bytes()
+        i = 2
+        while i < len(d) - 3 and d[i] == 0xFF:      # walk JPEG segments to APP1
+            m, seg = d[i + 1], int.from_bytes(d[i + 2:i + 4], "big")
+            if m == 0xE1 and d[i + 4:i + 10] == b"Exif\x00\x00":
+                tiff = i + 10
+                order = "<" if d[tiff:tiff + 2] == b"II" else ">"
+                ifd0_off, = struct.unpack(order + "I", d[tiff + 4:tiff + 8])
+                ifd0 = _ifd(d, tiff, tiff + ifd0_off, order)
+                if 0x8825 in ifd0:                  # GPS IFD pointer
+                    g = _ifd(d, tiff, tiff + ifd0[0x8825], order)
+                    lat = _dms(g.get(2), g.get(1, "N"))
+                    lon = _dms(g.get(4), g.get(3, "E"))
+                if 0x8769 in ifd0:                  # Exif IFD pointer
+                    ex = _ifd(d, tiff, tiff + ifd0[0x8769], order)
+                    taken = ex.get(0x9003) or ex.get(0x9004) or ""
+                taken = taken or ifd0.get(0x0132) or ""
+                break
+            if m in (0xDA, 0xD9):
+                break
+            i += 2 + seg
     except Exception:
-        out = []
-    out = [x.strip() for x in (out + ["", "", ""])[:3]]
-    out = ["" if x in ("(null)", "null") else x for x in out]
-    if not out[0]:
-        ts = datetime.datetime.fromtimestamp(path.stat().st_mtime)
-        out[0] = ts.strftime("%Y-%m-%d %H:%M:%S +0000")
-    return {"taken": out[0], "lat": out[1], "lon": out[2]}
+        pass
+    if taken:
+        # EXIF writes "YYYY:MM:DD HH:MM:SS"; the rest of the tool wants dashes.
+        taken = taken.replace(":", "-", 2) + " +0000"
+    else:
+        taken = datetime.datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S +0000")
+    return {"taken": taken, "lat": lat, "lon": lon}
 
 
 def strip_exif(path):
@@ -436,6 +510,37 @@ def cmd_publish(args):
     print("Full-resolution originals stay local in photos/ and are never published.")
 
 
+def cmd_refresh_gps(args):
+    """Re-read coordinates and capture time from the originals in photos/.
+
+    Needed for anything ingested before EXIF was parsed directly, and useful any
+    time a record has lost its location. Only fills blanks unless --force.
+    """
+    obs = load_obs()
+    fixed, missing = 0, 0
+    for o in obs:
+        if o.get("lat") and not args.force:
+            continue
+        src = PHOTOS / o["file"]
+        if not src.exists():
+            missing += 1
+            continue
+        e = exif_of(src)
+        if e["lat"]:
+            o["lat"], o["lon"] = blur(e["lat"]), blur(e["lon"])
+            if e["taken"]:
+                o["taken"] = e["taken"]
+            fixed += 1
+    save_obs(obs)
+    cmd_build(args)
+    print(f"\nRecovered coordinates for {fixed} record(s).")
+    if missing:
+        print(f"{missing} record(s) have no original in photos/ — nothing to re-read.")
+    still = sum(1 for o in load_obs() if not o.get("lat"))
+    if still:
+        print(f"{still} record(s) still have no location — their originals carry no GPS.")
+
+
 def cmd_species(args):
     for s in sorted(load(SPECIES_F, []), key=lambda s: s["common"]):
         print(f"  {s['id']:<28} {s['common']}  ({s['edibility']})")
@@ -466,6 +571,9 @@ if __name__ == "__main__":
                         "use for test photos or anywhere outside the survey area")
     i.set_defaults(func=cmd_ingest)
     sub.add_parser("build", help="regenerate app/data.js").set_defaults(func=cmd_build)
+    rg = sub.add_parser("refresh-gps", help="re-read coordinates from the originals in photos/")
+    rg.add_argument("--force", action="store_true", help="overwrite coordinates that are already set")
+    rg.set_defaults(func=cmd_refresh_gps)
     sub.add_parser("species", help="list species ids").set_defaults(func=cmd_species)
     sub.add_parser("todo", help="list photos not yet identified").set_defaults(func=cmd_todo)
     sub.add_parser("publish", help="build public/ with GPS scrubbed, ready to deploy").set_defaults(func=cmd_publish)
