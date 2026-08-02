@@ -181,6 +181,10 @@ def main():
     ap.add_argument("--limit", type=int, help="only do this many (good for a first test)")
     ap.add_argument("--all-unknown", action="store_true",
                     help="also retry photos a human already looked at and left unknown")
+    ap.add_argument("--max-attempts", type=int, default=2,
+                    help="stop retrying a photo after this many identification attempts (0 = no cap)")
+    ap.add_argument("--retry-exhausted", action="store_true",
+                    help="ignore --max-attempts and retry photos that have hit the cap")
     ap.add_argument("--model", default=MODEL)
     ap.add_argument("--effort", default=EFFORT, choices=["low", "medium", "high", "xhigh", "max"])
     ap.add_argument("--region", default=os.environ.get("PLANT_REGION", DEFAULT_REGION),
@@ -203,6 +207,16 @@ def main():
 
     pending = [o for o in obs if o["species_id"] == "unknown"
                and (args.all_unknown or o.get("confidence") == "unidentified")]
+
+    # A photo the model could not identify is still unidentified, so it stays
+    # eligible forever and every --all-unknown run pays for it again. Cap the
+    # retries: a shot with no diagnostic features will not resolve on attempt six.
+    if args.max_attempts and not args.retry_exhausted:
+        spent = [o for o in pending if o.get("id_attempts", 0) >= args.max_attempts]
+        pending = [o for o in pending if o.get("id_attempts", 0) < args.max_attempts]
+        if spent:
+            print(f"Skipping {len(spent)} photo(s) already attempted {args.max_attempts}x "
+                  f"(--retry-exhausted to force, --max-attempts to change).")
     if not pending:
         print("Nothing awaiting identification."
               + ("" if args.all_unknown else "  (--all-unknown to retry the hand-flagged ones)"))
@@ -225,6 +239,8 @@ def main():
             failed += 1
             continue
 
+        o["id_attempts"] = o.get("id_attempts", 0) + 1   # counted even if the call fails
+        save_obs(obs)
         img = base64.standard_b64encode(thumb.read_bytes()).decode()
         prompt = (
             f"{describe(o)}\n\n"

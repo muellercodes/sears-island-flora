@@ -187,6 +187,21 @@ gh api -X POST repos/OWNER/sears-island-flora/pages -f build_type=workflow
 
 ## Commands
 
+### Never paying twice for the same photo
+
+Three layers, all verifiable with `plantdb.py doctor` and the commands below:
+
+1. **Ingest** skips any photo already in the library, matched by content hash — the
+   same image from a different folder or filename is not re-added.
+2. **Identify** only selects records still marked `species_id: unknown`, so anything
+   already identified is never sent again.
+3. **A retry cap** (`--max-attempts`, default 2) stops re-paying for photos the model
+   genuinely cannot identify. Those stay `unknown` forever, so without the cap every
+   `--all-unknown` run would bill for them again. `--retry-exhausted` overrides it.
+
+Each attempt is counted in `id_attempts` *before* the API call, so a crash or timeout
+still counts — the cap holds even when a run dies mid-flight.
+
 ```bash
 python3 scripts/plantdb.py ingest DIR   # copy in, thumbnail, strip EXIF, keep precise GPS
 python3 scripts/plantdb.py ingest DIR --local   # ...but never commit or publish these
