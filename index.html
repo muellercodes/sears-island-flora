@@ -321,7 +321,7 @@ function shotGrid(list, s, secondary = false) {
           ? `<span class="conf" style="color:var(--muted)">filed under ${esc(subject ? subject.common : o.species_id)}</span><br>`
           : `<span class="conf conf-${o.confidence}">${esc(o.confidence)} confidence</span><br>`}
         ${esc(o.note || "")}
-        <div style="margin-top:6px;opacity:.75">${esc((o.taken || "").slice(0, 16))}${o.lat ? ` · near ${esc(o.lat)}, ${esc(o.lon)}` : ""}</div>
+        <div style="margin-top:6px;opacity:.75">${esc((o.taken || "").slice(0, 16))}${o.lat ? ` · ${esc(o.lat)}, ${esc(o.lon)}` : ""}</div>
       </figcaption>
     </figure>`;
   }).join("")}</div>`;
