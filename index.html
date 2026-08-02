@@ -56,16 +56,28 @@
   .chip.c-toxic[aria-pressed=true]{color:var(--toxic)} .chip.c-unknown[aria-pressed=true]{color:var(--unknown)}
 
   .notice { background:color-mix(in srgb, var(--caution) 12%, transparent);
-    border:1px solid var(--caution); border-radius:10px; padding:13px 16px;
-    margin:20px 0 0; font-size:14px; }
-  .notice h4 { margin:0 0 5px; color:var(--caution); font-size:12px; font-weight:700;
+    border:1px solid var(--caution); border-radius:10px; padding:11px 14px;
+    margin:16px 0 0; font-size:13.5px; }
+  .notice > summary b { color:var(--caution); font-size:12px; font-weight:700;
     text-transform:uppercase; letter-spacing:.05em; }
-  .notice p { margin:0; color:var(--ink); }
-  .safety { display:flex; gap:12px; align-items:flex-start; background:var(--panel);
-    border:1px solid var(--line); border-left:4px solid var(--toxic);
-    border-radius:10px; padding:13px 16px; margin:20px 0 4px; font-size:14px; box-shadow:var(--shadow); }
+  .notice p { margin:9px 0 0; color:var(--ink); }
+
+  /* Collapsed by default so the map and photos are reachable without scrolling on a
+     phone; opened on wider screens where there is room for the full text. */
+  details.notice, details.safety { cursor:default; }
+  details > summary { cursor:pointer; display:flex; gap:10px; align-items:center;
+    list-style:none; }
+  details > summary::-webkit-details-marker { display:none; }
+  details > summary::after { content:"›"; margin-left:auto; color:var(--muted);
+    font-size:18px; line-height:1; transition:transform .15s ease; flex:none; }
+  details[open] > summary::after { transform:rotate(90deg); }
+  details > summary:focus-visible { outline:2px solid var(--accent); outline-offset:3px; border-radius:5px; }
+  .safety .ico { font-size:18px; line-height:1; flex:none; }
+  .safety { background:var(--panel); border:1px solid var(--line);
+    border-left:4px solid var(--toxic); border-radius:10px; padding:11px 14px;
+    margin:14px 0 4px; font-size:13.5px; box-shadow:var(--shadow); }
   .safety b { color:var(--toxic); }
-  .safety p { margin:0; color:var(--muted); }
+  .safety p { margin:9px 0 0; color:var(--muted); }
 
   .count { color:var(--muted); font-size:13px; margin:22px 0 12px; }
 
@@ -159,7 +171,25 @@
   /* Tall enough to be worth panning on a phone, capped so the page still scrolls. */
   #map { height:min(72vh,680px); border-radius:13px; border:1px solid var(--line);
          background:var(--panel); box-shadow:var(--shadow); }
-  @media (max-width:620px){ #map { height:70vh; border-radius:11px; } }
+  /* Fill what's left below the sticky header rather than a fixed fraction, so the
+     map is usable without scrolling. dvh accounts for mobile browser chrome. */
+  @media (max-width:620px){
+    #map { height:max(340px, calc(100dvh - 250px)); border-radius:11px; }
+    /* Reclaim vertical space so the map isn't pushed under the fold: the status
+       chips scroll sideways instead of wrapping to a second row, and the header
+       and count line lose the padding they can afford to. */
+    .chips { flex-wrap:nowrap; overflow-x:auto; scrollbar-width:none;
+             -webkit-overflow-scrolling:touch; margin-top:8px; padding-bottom:1px; }
+    .chips::-webkit-scrollbar { display:none; }
+    .chip { flex:none; }
+    header { padding:12px 0 10px; }
+    .title { gap:8px; }
+    h1 { font-size:19px; }
+    .controls { margin-top:9px; gap:8px; }
+    .count { margin:11px 0 8px; }
+    .notice, .safety { margin-top:11px; padding:10px 12px; font-size:13px; }
+    main.wrap { padding-bottom:32px; }
+  }
   /* OSM tiles are light-only; dulling them in dark mode keeps the markers readable. */
   @media (prefers-color-scheme: dark) { .leaflet-tile-pane { filter:brightness(.68) saturate(.75); } }
   /* Leaflet's stylesheet is injected at runtime, so it lands after this block in
@@ -240,9 +270,9 @@
     <div class="controls">
       <input type="search" id="q" placeholder="Search name, part, use, caution…  ( / )" autocomplete="off">
       <div class="seg" role="group" aria-label="View">
-        <button id="v-species" aria-pressed="true">Species</button>
+        <button id="v-map" aria-pressed="true">Map</button>
+        <button id="v-species" aria-pressed="false">Species</button>
         <button id="v-photos" aria-pressed="false">Photos</button>
-        <button id="v-map" aria-pressed="false">Map</button>
       </div>
     </div>
     <div class="chips" id="filters"></div>
@@ -252,16 +282,15 @@
 <main class="wrap">
   <div id="notice"></div>
 
-  <div class="safety">
-    <span style="font-size:22px;line-height:1.05">🔬</span>
-    <p><b>These identifications are AI-generated from volunteer photographs and have not been
-       verified in the field.</b> Treat every record as a lead to go and check, not a finding.
+  <details class="safety" id="safety">
+    <summary><span class="ico">🔬</span><b>AI-generated identifications, not verified in the field.</b></summary>
+    <p>Treat every record as a lead to go and check, not a finding.
        Nothing here should be cited as evidence of a species' presence or absence until someone
        qualified has confirmed it on the ground and dated that confirmation.<br>
        Regulated-species records in particular need in-person verification against the current
        <a href="https://www.maine.gov/dacf/php/horticulture/invasiveplants.shtml">Maine DACF list</a>
        before being reported to anyone.</p>
-  </div>
+  </details>
 
   <p class="count" id="count"></p>
   <div id="view"></div>
@@ -305,7 +334,7 @@ const statusOf = s => STATUS[s.origin_status] ? s.origin_status : "unknown";
 const badgeOf = s => STATUS[statusOf(s)];
 const isAuto = s => typeof s.source === "string" && s.source.startsWith("auto");
 
-let mode = "species", query = "", active = new Set();
+let mode = "map", query = "", active = new Set();
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 // The build writes an explicit thumb path, because local-only records live in a
@@ -315,6 +344,10 @@ const thumbSrc = o => o.thumb || `thumbs/${o.file}`;
 // and is absent on records that predate that being recorded — show nothing rather
 // than guess a date for them.
 const day = o => (o.taken || "").slice(0, 10);
+// Banners stay collapsed on a phone, where they would otherwise push the map and
+// photos below the fold, and open on wider screens where the text costs nothing.
+const ROOMY = window.matchMedia("(min-width: 700px)");
+function openWide(el) { if (el) el.open = ROOMY.matches; }
 function dateSpan(list) {
   const d = [...new Set(list.map(day).filter(Boolean))].sort();
   if (!d.length) return "";
@@ -717,8 +750,10 @@ $("lightbox").onclick = () => $("lightbox").close();
   // data/publish-config.json is what retires it — same scrub as the records.
   const nt = DB.notice;
   if (nt && nt.body) {
-    $("notice").className = "notice";
-    $("notice").innerHTML = `${nt.title ? `<h4>${esc(nt.title)}</h4>` : ""}<p>${esc(nt.body)}</p>`;
+    $("notice").outerHTML = `<details class="notice" id="notice">
+      <summary><b>${esc(nt.title || "Note")}</b></summary>
+      <p>${esc(nt.body)}</p></details>`;
+    openWide($("notice"));
   }
 
   // "Last updated" is the most recent identification if any record carries one,
@@ -730,6 +765,7 @@ $("lightbox").onclick = () => $("lightbox").close();
     ids.length ? `Last updated ${ids.at(-1)}` : (built ? `Last updated ${built}` : ""),
     span, `${OBS.length} record${OBS.length === 1 ? "" : "s"}`,
   ].filter(Boolean).join(" · ");
+  openWide($("safety"));
   render();
 })();
 </script>
