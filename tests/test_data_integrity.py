@@ -52,9 +52,18 @@ class ReferenceListAndCatalogueAgree(unittest.TestCase):
                                     f"{sid} is flagged regulated with no note")
 
     def test_the_source_still_says_it_is_not_an_authority(self):
-        """This file was compiled, not transcribed from the rule. If that caveat
-        ever disappears, someone will cite it to an agency."""
-        self.assertIn("VERIFY", self.ref["_source"])
+        """However carefully this file is checked, it is a copy — the rule is
+        reviewed every 5 years and this is not it. If that caveat ever quietly
+        disappears, someone will cite this to an agency.
+
+        Checked as meaning rather than as one literal word, so that rewording the
+        note is allowed and dropping the caveat is not.
+        """
+        source = self.ref["_source"].lower()
+        self.assertTrue(any(w in source for w in ("verify", "recheck", "check")),
+                        "_source must tell the reader to check it against the rule")
+        self.assertIn("not the rule", source,
+                      "_source must say plainly that this file is not the authority")
 
 
 class ThePublishedSetHoldsToTheRule(unittest.TestCase):
