@@ -85,6 +85,11 @@ def save_obs(obs):
 # (a shared spreadsheet, say) conflict-free later: every field has one writer.
 VERIFY_STATUS = ("confirmed", "corrected", "rejected", "revisit")
 
+# How many verifications a single `sheet-pull` may withdraw before it stops and
+# asks. The pull runs unattended on a schedule, and an emptied STATUS column looks
+# exactly like a steward retracting everything.
+MAX_UNATTENDED_CLEARS = 2
+
 
 def effective_species(o):
     """The species to believe: a human correction if there is one, else the model's."""
@@ -1080,6 +1085,27 @@ def cmd_sheet_pull(args):
     if not changes:
         print("No verification changes in the sheet." if not problems else "\nNo applicable changes.")
         return
+
+    # Clearing a verification is the one destructive thing a pull can do, and it is
+    # indistinguishable from an accident: select the STATUS column, press delete,
+    # and every field check ever recorded is withdrawn on the next hourly run. A
+    # steward changing their mind about one or two records is ordinary; a dozen at
+    # once is a mis-click. Withdrawals are the hardest data here to reconstruct —
+    # they represent someone having walked out there — so past a small number this
+    # stops and waits for a person.
+    clears = [c for c in changes if c[1] is None]
+    if len(clears) > MAX_UNATTENDED_CLEARS and not args.force:
+        print(f"\n  ! {len(clears)} verification(s) would be WITHDRAWN in one pull:")
+        for o, _, desc in clears[:10]:
+            print(f"      {o['file'][:14]}…  {desc}")
+        if len(clears) > 10:
+            print(f"      ... and {len(clears) - 10} more")
+        print(f"\n    More than {MAX_UNATTENDED_CLEARS} at once usually means the STATUS column")
+        print("    was cleared or shifted by accident, not that this many people changed")
+        print("    their mind. Nothing was applied — not even the other changes.")
+        print("    Check the sheet, then re-run with --force if it is genuinely right.")
+        sys.exit(1)
+
     print(f"\n{len(changes)} change(s) from the sheet:")
     for o, new, desc in changes[:20]:
         print(f"  {o['file'][:14]}…  {desc}")
@@ -1734,6 +1760,8 @@ if __name__ == "__main__":
     sp_.set_defaults(func=cmd_sheet_push)
     pl = sub.add_parser("sheet-pull", help="read steward verifications back from the sheet")
     pl.add_argument("--yes", action="store_true", help="apply (otherwise just previews)")
+    pl.add_argument("--force", action="store_true",
+                    help=f"allow withdrawing more than {MAX_UNATTENDED_CLEARS} verifications at once")
     pl.set_defaults(func=cmd_sheet_pull)
     sub.add_parser("cache", help="what we've already paid to identify, and what it cost").set_defaults(func=cmd_cache)
     sub.add_parser("batches", help="batches submitted to the Batch API and not yet collected")\

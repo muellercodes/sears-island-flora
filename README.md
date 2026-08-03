@@ -178,6 +178,57 @@ silently lost work.
 not exist, or — importantly — a verification with nobody's name against it. An
 unattributed verification is not a verification.
 
+### What happens when the sheet gets mangled
+
+It is a shared spreadsheet, so it will be. The pull runs unattended on a schedule,
+which raises the stakes on every one of these.
+
+| What someone does | What happens |
+|---|---|
+| Types garbage into STATUS | Refused, named in the output. Nothing written. |
+| `corrected` with no species, or a species id that doesn't exist | Refused. |
+| Fills in a verification but no name | Refused — an unattributed verification is not a verification. |
+| Edits a pipeline column (file, coordinates, the AI's answer) | Warning-protected in the sheet; overwritten on the next push. If they change `file`, the row stops matching a record and is ignored. |
+| **Deletes rows** | Those records simply aren't read. Existing verifications on them are untouched, and the next push puts the rows back. |
+| Adds a row with a made-up filename | Ignored — no such record. |
+| **Deletes, inserts or reorders a column** | **Everything stops.** See below. |
+| **Empties the STATUS column** | Blocked past two withdrawals. See below. |
+
+**A moved column is the dangerous one.** Every field is read by position — status is
+column I because that is where push put it. Shift the columns and each value is
+silently read as the field beside it: a steward's name as a species id, notes as a
+date. None of the value checks above catch it, because each value still looks
+plausible in its new place. So the header is verified before anything is believed:
+
+```
+The sheet's columns are not where the pipeline put them, so nothing can be read
+from it safely.
+     A: expected 'file', found 'file'
+  -> D: expected 'latitude', found 'longitude'
+  -> E: expected 'longitude', found 'AI identification'
+```
+
+Fix it by undoing the change (*File → Version history*), which preserves
+verifications. If the human columns are already lost, delete the `Records` tab and
+run `sheet-push` — it rebuilds from scratch, and anything not already pulled into
+`data/observations.json` is gone.
+
+**A mass withdrawal is the other one.** Select the STATUS column, press delete, and
+every field check ever recorded reads as "withdrawn" — applied on the next
+unattended pull. One or two people changing their mind is ordinary; a dozen at once
+is a mis-click, and this is the hardest data in the project to reconstruct, because
+it represents someone having walked out there. Past two, the pull stops and applies
+nothing at all:
+
+```bash
+python3 scripts/plantdb.py sheet-pull            # preview — always safe
+python3 scripts/plantdb.py sheet-pull --yes      # apply
+python3 scripts/plantdb.py sheet-pull --yes --force   # ...including >2 withdrawals
+```
+
+Underneath all of it, `data/observations.json` is in git, so any verification that
+was ever pulled is recoverable from history.
+
 ## Screening
 
 Contributor photos are screened before entering the survey. The check is an

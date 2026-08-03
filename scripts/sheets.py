@@ -196,6 +196,41 @@ def push(svc, cfg, obs, species, image_base, verified_by_file):
     return len(rows)
 
 
+def check_header(row):
+    """Refuse to read a sheet whose columns have moved.
+
+    Every read below is POSITIONAL — status is column 9 because that is where push
+    put it. Insert, delete or reorder a column and each field silently becomes the
+    one beside it: a steward's name read as a species id, field notes read as a
+    date, or — the bad one — an emptied STATUS column read as "this verification
+    was withdrawn" for every row at once, applied unattended by the hourly pull.
+
+    None of the value checks downstream can catch that, because each individual
+    value still looks plausible in its new position. The header is the only thing
+    that knows the layout is wrong, so it is checked before anything is believed.
+    """
+    got = [(c or "").strip() for c in (list(row) + [""] * len(HEADERS))[:len(HEADERS)]]
+    if got == HEADERS:
+        return
+    lines = ["The sheet's columns are not where the pipeline put them, so nothing "
+             "can be read from it safely.\n"]
+    for i, (want, have) in enumerate(zip(HEADERS, got)):
+        mark = "  " if want == have else "->"
+        lines.append(f"  {mark} {_col(i)}: expected {want!r}, found {have!r}")
+    lines += [
+        "",
+        "Every field is read by position, so a shifted column would be read as the",
+        "one next to it and quietly written into the survey. Fix it one of two ways:",
+        "",
+        "  * Undo the column change in the sheet (Google Sheets keeps a full history:",
+        "    File -> Version history). Verifications are preserved.",
+        "  * If the human columns are already lost, delete the 'Records' tab and run",
+        "    `plantdb.py sheet-push` — it rebuilds the tab from scratch. Any",
+        "    verification not already pulled into data/observations.json is gone.",
+    ]
+    sys.exit("\n".join(lines))
+
+
 def pull(svc, cfg):
     """Read the human columns back. Returns {file: {status, species_id, by, date, notes}}.
 
@@ -207,10 +242,16 @@ def pull(svc, cfg):
     if tab_id(svc, cfg) is None:
         return {}
     last = _col(len(HEADERS) - 1)
+    # From row 1, not row 2: the header is the only evidence that the columns still
+    # mean what the positional reads below assume.
     res = svc.spreadsheets().values().get(
-        spreadsheetId=cfg["sheet_id"], range=f"{SHEET_NAME}!A2:{last}").execute()
+        spreadsheetId=cfg["sheet_id"], range=f"{SHEET_NAME}!A1:{last}").execute()
+    values = res.get("values", [])
+    if not values:
+        return {}
+    check_header(values[0])
     out = {}
-    for row in res.get("values", []):
+    for row in values[1:]:
         row = row + [""] * (len(HEADERS) - len(row))
         f = (row[0] or "").strip()
         if not f:
