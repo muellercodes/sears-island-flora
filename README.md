@@ -300,6 +300,30 @@ still reachable by URL. `publish` counts those and prints the cleanup:
 python3 scripts/plantdb.py publish --prune-r2
 ```
 
+## When a photo arrives with no date or location
+
+Coordinates come from the photograph's EXIF, so a photo that reaches the folder with
+its EXIF already stripped has none — and there is nothing the pipeline can do to
+recover it. That is not a bug on this side; the metadata was gone before the file
+arrived. The usual causes are a photo sent through a messaging app, uploaded via a
+web form, or re-exported, all of which strip EXIF by design.
+
+The tell is a photo whose EXIF block is a few dozen bytes instead of several
+kilobytes. One record in the current survey is like this
+(`0AA7200E-…`): no coordinates, no capture date. `verify` reports it as *of limited
+survey value*, which is the honest description — it is a real observation of a real
+plant that cannot be placed on the map.
+
+**A missing capture date is left blank, never guessed.** It used to fall back to the
+file's modification time, which for anything fetched from Drive is the moment we
+downloaded it — so the site printed "Photographed 2026-08-02" over a photograph
+whose date nobody knew. A survey that will not invent a species must not invent a
+date either.
+
+If you want the metadata preserved, ask contributors to share the original file —
+in Drive, *upload* the photo rather than pasting it into a message, and avoid
+"share a copy" options that re-encode.
+
 ## Location precision
 
 **Coordinates are kept at full precision and published.** This is the opposite of the
@@ -395,7 +419,7 @@ still work with no network.
 ## Setup
 
 ```bash
-python3 -m venv .venv && .venv/bin/pip install anthropic
+python3 -m venv .venv && .venv/bin/pip install anthropic Pillow pillow-heif
 echo 'ANTHROPIC_API_KEY=sk-ant-...' > .env
 
 python3 scripts/plantdb.py ingest ~/Dropbox/sears-island-photos

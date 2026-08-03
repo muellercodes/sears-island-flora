@@ -293,8 +293,14 @@
   <div id="notice"></div>
 
   <details class="safety" id="safety">
-    <summary><span class="ico">🔬</span><b>AI-generated identifications, not verified in the field.</b></summary>
-    <p>Treat every record as a lead to go and check, not a finding.
+    <summary><span class="ico">🔬</span><b>AI-generated identifications, not verified in the field unless marked <span class="vtag v-ok">✓ Field-verified</span></b></summary>
+    <p>Treat every record as a lead to go and check, not a finding. Records a person has
+       actually been to are labelled <span class="vtag v-ok">✓ Field-verified</span>,
+       <span class="vtag v-ok">✓ Corrected in field</span>,
+       <span class="vtag v-no">✕ Rejected in field</span> or
+       <span class="vtag v-tbd">? Needs another look</span>, with who checked it and when.
+       Everything else is marked <span class="vtag v-none">unverified</span> and is a machine
+       identification from a single photograph.<br>
        Nothing here should be cited as evidence of a species' presence or absence until someone
        qualified has confirmed it on the ground and dated that confirmation.<br>
        Regulated-species records in particular need in-person verification against the current

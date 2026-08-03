@@ -122,13 +122,22 @@ def delete(cfg, key):
 
 
 def check(cfg):
-    """Verify credentials work before a run uploads hundreds of objects."""
+    """Verify credentials work before a run uploads hundreds of objects.
+
+    Cleans up after itself: the bucket is public, so a preflight object left behind
+    by every `doctor` run is a stray file anyone can fetch. Deletion failing does
+    not fail the check — the credentials demonstrably work by that point.
+    """
     key = ".plantdb-preflight"
     try:
         put(cfg, key, b"ok", "text/plain", retries=1)
-        return True, "credentials OK"
     except R2Error as e:
         return False, str(e)
+    try:
+        delete(cfg, key)
+    except Exception:
+        pass
+    return True, "credentials OK"
 
 
 if __name__ == "__main__":

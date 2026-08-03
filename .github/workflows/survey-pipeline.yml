@@ -62,8 +62,17 @@ jobs:
         with:
           python-version: "3.12"
 
+      # Pillow and pillow-heif are what make thumbnailing work off a Mac: the
+      # original code shelled out to `sips`, which does not exist on a Linux
+      # runner, so every thumbnail failed and nothing could be identified.
+      # pillow-heif is not optional in practice — contributors shoot on iPhones.
       - name: Install dependencies
-        run: pip install --quiet anthropic google-api-python-client google-auth google-auth-httplib2
+        run: |
+          pip install --quiet anthropic google-api-python-client google-auth \
+                              google-auth-httplib2 Pillow pillow-heif
+          python3 -c "import sys; sys.path.insert(0,'scripts'); import plantdb; \
+                      t = plantdb.have_thumbnailer(); print('thumbnailer:', t); \
+                      sys.exit(0 if t else 'no thumbnailer available')"
 
       # No image ever enters git — thumbs/ is gitignored and published images are
       # served from R2. But a photo's thumbnail has to survive from the run that

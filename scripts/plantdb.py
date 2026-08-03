@@ -313,8 +313,13 @@ def exif_of(path):
     if taken:
         # EXIF writes "YYYY:MM:DD HH:MM:SS"; the rest of the tool wants dashes.
         taken = taken.replace(":", "-", 2) + " +0000"
-    else:
-        taken = datetime.datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S +0000")
+    # No fallback to the file's mtime. That is when the file was written to this
+    # disk — for anything downloaded from Drive, the moment we downloaded it — and
+    # recording it as `taken` had the site print "Photographed 2026-08-02" over a
+    # photograph whose date nobody knows. It was also stamped "+0000" while being
+    # read in local time, so it was wrong twice. A survey that will not invent a
+    # species must not invent a date either; blank is the true answer and every
+    # consumer already handles it.
     return {"taken": taken, "lat": lat, "lon": lon}
 
 
@@ -359,11 +364,61 @@ def strip_exif(path):
     return True
 
 
-def make_thumb(src, dst):
+def to_jpeg(src, dst, max_px=None):
+    """Convert (and optionally shrink) an image to JPEG. True if dst was written.
+
+    Pillow first, `sips` second. This used to be sips alone, which is part of macOS
+    and does not exist on a Linux CI runner — so in the cloud every thumbnail failed
+    silently, nothing could be identified (identify reads the thumbnail), and the
+    whole scheduled pipeline was an expensive no-op. Pillow covers the runner;
+    sips stays as the fallback for a machine without it, which is how this ran for
+    its first year.
+
+    HEIC needs pillow-heif, which iPhones make this worth having: register it when
+    present and let the sips fallback take HEIC on a Mac without it.
+    """
     dst.parent.mkdir(parents=True, exist_ok=True)
-    r = subprocess.run(["sips", "-Z", str(THUMB_PX), "-s", "format", "jpeg", str(src),
-                        "--out", str(dst)], capture_output=True)
-    if r.returncode != 0 or not dst.exists():
+    try:
+        from PIL import Image, ImageOps
+        try:
+            import pillow_heif
+            pillow_heif.register_heif_opener()
+        except ImportError:
+            pass
+        with Image.open(src) as im:
+            # Apply the orientation tag before it is stripped, or every photo an
+            # iPhone recorded sideways stays sideways with nothing left to say so.
+            im = ImageOps.exif_transpose(im).convert("RGB")
+            if max_px:
+                im.thumbnail((max_px, max_px))
+            im.save(dst, "JPEG", quality=88)
+        if dst.exists():
+            return True
+    except ImportError:
+        pass                      # no Pillow — fall through to sips
+    except Exception as e:
+        print(f"  ! {src.name}: {type(e).__name__} reading image ({e}); trying sips")
+
+    cmd = ["sips"] + (["-Z", str(max_px)] if max_px else []) + \
+          ["-s", "format", "jpeg", str(src), "--out", str(dst)]
+    try:
+        r = subprocess.run(cmd, capture_output=True)
+    except FileNotFoundError:
+        return False              # neither Pillow nor sips; caller reports it
+    return r.returncode == 0 and dst.exists()
+
+
+def have_thumbnailer():
+    """Is there any way to make a thumbnail on this machine?"""
+    try:
+        import PIL  # noqa: F401
+        return "Pillow"
+    except ImportError:
+        return "sips" if shutil.which("sips") else None
+
+
+def make_thumb(src, dst):
+    if not to_jpeg(src, dst, THUMB_PX):
         return False
     strip_exif(dst)
     return True
@@ -404,13 +459,17 @@ def cmd_ingest(args):
         PHOTOS.mkdir(exist_ok=True)
         if src.suffix.lower() in (".jpg", ".jpeg"):
             shutil.copy2(src, dest)
-        else:
-            if subprocess.run(["sips", "-s", "format", "jpeg", str(src), "--out", str(dest)],
-                              capture_output=True).returncode != 0:
-                print(f"  ! could not convert {src.name}")
-                continue
+        elif not to_jpeg(src, dest):
+            print(f"  ! could not convert {src.name} — skipped")
+            continue
+        # No thumbnail, no record. identify.py reads the thumbnail, publish uploads
+        # it, and the site shows it, so a record without one is a row that can never
+        # become anything. Leaving it out means the photo is simply retried on the
+        # next run instead of sitting in the survey as a permanent blank.
         if not make_thumb(dest, (THUMBS_LOCAL if args.local else THUMBS) / dest.name):
-            print(f"  ! could not thumbnail {dest.name}")
+            print(f"  ! could not thumbnail {dest.name} — skipped, will retry next run")
+            dest.unlink(missing_ok=True)
+            continue
         e = exif_of(dest)
         # Both copies are full precision here — see PRIVATE_F above. The sidecar is
         # kept only so a record's original coordinates survive an edit to
@@ -583,7 +642,8 @@ def cmd_verify(args):
     import re
     problems, warnings = [], []
 
-    for t in sorted(THUMBS.glob("*.jpg")) + sorted(THUMBS_LOCAL.glob("*.jpg")):
+    thumbs = sorted(THUMBS.glob("*.jpg")) + sorted(THUMBS_LOCAL.glob("*.jpg"))
+    for t in thumbs:
         head = t.read_bytes()[:8192]
         if b"Exif" in head or b"http://ns.adobe.com/xap" in head:
             problems.append(f"{t.relative_to(ROOT)} still has an EXIF/XMP segment")
@@ -638,6 +698,14 @@ def cmd_verify(args):
             print(f"  - {w}")
         if len(warnings) > 5:
             print(f"  ... and {len(warnings) - 5} more")
+    # Say how many were examined. Images live on R2 and never enter git, so on a CI
+    # runner thumbs/ is usually empty — and "thumbnails carry no EXIF" printed after
+    # inspecting nothing reads like a passed privacy audit when none was performed.
+    if not thumbs:
+        print("Note: no local thumbnails to inspect, so the EXIF check examined nothing.")
+        print("      Images are on R2; run `verify` where the thumbnails are to audit them.")
+    else:
+        print(f"Inspected {len(thumbs)} thumbnail(s) for EXIF/XMP.")
     print(f"Check passed — thumbnails carry no EXIF; "
           f"{len(obs) - len(missing)}/{len(obs)} records have survey-grade coordinates.")
 
@@ -1020,7 +1088,7 @@ def cmd_ingest_drive(args):
     if staging.exists():
         shutil.rmtree(staging)
     staging.mkdir()
-    got = 0
+    got, fetched = 0, []
     for f in new:
         dest = staging / f["name"]
         n = 1
@@ -1032,9 +1100,7 @@ def cmd_ingest_drive(args):
         except Exception as e:
             print(f"  ! {f['name']}: download failed — {e}")
             continue
-        # Recorded only after the bytes are on disk, so a failed download is retried
-        # on the next run rather than silently skipped forever.
-        idcache.drive_record(con, f["id"], f["name"])
+        fetched.append(f)
         got += 1
         print(f"  + {f['name']}")
     print(f"\nDownloaded {got} file(s) to {staging.name}/")
@@ -1042,6 +1108,19 @@ def cmd_ingest_drive(args):
         args.folder = str(staging)
         args.batch = args.batch or datetime.date.today().isoformat()
         cmd_ingest(args)
+    # Marked as fetched only once ingest has actually run, and only for files that
+    # reached the library. Recording them at download time meant a crash in between
+    # — or a photo ingest skipped, or the staging directory wiped at the start of
+    # the next run — left the id marked seen with nothing to show for it, and that
+    # photo was never fetched again. Re-downloading costs bandwidth; losing a
+    # contributor's photograph costs the survey a record it cannot get back.
+    in_library = {o.get("hash") for o in load_obs()}
+    for f in fetched:
+        p = staging / f["name"]
+        if not p.exists() or sha(p) in in_library:
+            idcache.drive_record(con, f["id"], f["name"])
+        else:
+            print(f"  ! {f['name']} did not make it into the library — will retry next run")
     shutil.rmtree(staging, ignore_errors=True)
 
 
@@ -1303,6 +1382,11 @@ def cmd_doctor(args):
               + ") — optional; enables steward review")
     except ImportError:
         pass
+
+    tn = have_thumbnailer()
+    check(bool(tn), f"Thumbnailer available ({tn})",
+          "No way to make a thumbnail — install Pillow (`pip install Pillow pillow-heif`) "
+          "or run on macOS, which has `sips`. Without one, ingest skips every photo.")
 
     # Scheduling is satisfied by either the cloud workflow or the local launchd
     # agent — reporting the laptop watcher as outstanding when the pipeline runs
