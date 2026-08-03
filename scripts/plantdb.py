@@ -1649,6 +1649,29 @@ def reconcile(species, obs, apply, log=print):
         species[:] = [sp for sp in species if sp["id"] not in drop_ids]
         _repoint(obs, renames)
 
+    # Orphans. An auto-created entry exists only because a photo matched it, so when
+    # those records go — `remove --batch`, a re-identification, a correction — the
+    # entry is left standing with nothing behind it and the site publishes a species
+    # nobody photographed here. That is how retiring the Orono proof-of-concept
+    # batch left "Japanese Knotweed (regulated)" on a survey of an island it was
+    # never photographed on: exactly the false positive this project cannot afford.
+    #
+    # Last, so a duplicate is merged into its survivor rather than orphaned, and a
+    # description is dropped for the honest reason rather than this one.
+    already = {sp["id"] for sp, _, _ in dropped} | set(renames)
+    orphans = [
+        (sp, "nothing references it — the records it was created from are gone", 0)
+        for sp in species
+        if str(sp.get("source", "")).startswith("auto (")
+        and sp["id"] not in already
+        and sp["id"] not in verified_ids
+        and not _refcount(obs, sp["id"])
+    ]
+    if apply and orphans:
+        gone = {sp["id"] for sp, _, _ in orphans}
+        species[:] = [sp for sp in species if sp["id"] not in gone]
+    dropped += orphans
+
     return dropped, merged, renames
 
 
@@ -1663,12 +1686,15 @@ def cmd_reconcile(args):
     dropped, merged, renames = reconcile(species, obs, apply=False)
 
     if dropped:
-        print(f"{len(dropped)} entr(ies) are descriptions, not species:\n")
+        print(f"{len(dropped)} auto-created entr(ies) do not belong in the catalogue:\n")
         for sp, reason, n in dropped:
-            print(f"  {sp['id']}")
+            flag = {"regulated": "  ** REGULATED **", "invasive": "  * invasive *"}.get(
+                sp.get("origin_status"), "")
+            print(f"  {sp['id']}{flag}")
             print(f"      {sp['common']!r}  ({sp['scientific']})")
             print(f"      {reason}")
-            print(f"      {n} record(s) would go back to unidentified")
+            if n:
+                print(f"      {n} record(s) would go back to unidentified")
         print()
     if merged:
         print(f"{len(merged)} near-duplicate group(s):\n")

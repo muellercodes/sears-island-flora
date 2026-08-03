@@ -1341,43 +1341,6 @@
   "lookalikes": []
  },
  {
-  "id": "japanese-knotweed-possible-young-shoot",
-  "common": "Japanese Knotweed (possible young shoot)",
-  "scientific": "Reynoutria japonica (cf.)",
-  "family": "Polygonaceae",
-  "kind": "herb",
-  "edibility": "edible-with-caution",
-  "summary": "Very likely a young shoot of Japanese knotweed, one of the most aggressive regulated invasives in Maine, though this single blurry seedling cannot be confirmed without seeing the stem nodes. Knotweed spreads from rhizome and stem fragments and forms dense monocultures along roadsides and riverbanks. Young spring shoots are edible and rhubarb-like, but the plant should be reported, not transplanted or composted.",
-  "parts": [
-   {
-    "part": "Young shoots under about 8 inches",
-    "use": "Food",
-    "season": "Spring only, while tender and hollow",
-    "prep": "Peel, chop, and cook like rhubarb in pies, sauces, or soups; tart from oxalic acid, so eat in moderation"
-   }
-  ],
-  "id_marks": [
-   "Leaves broadly ovate to triangular with a flat, squared-off base and an abruptly pointed tip",
-   "Leaves alternate, set in a zigzag pattern along the stem",
-   "Stem hollow and bamboo-like with swollen nodes; a thin papery sheath (ocrea) rings the stem at each node",
-   "Stems often flecked or streaked with reddish-purple when young",
-   "Mature clumps reach 6-10 ft with sprays of creamy white flowers in late summer"
-  ],
-  "cautions": [
-   "Do not dig, pull, or move soil from a knotweed patch \u2014 any rhizome or stem fragment can start a new colony",
-   "Never compost or dump cuttings; bag or dry them on pavement",
-   "High oxalic acid, so limit quantity if eating; avoid if prone to kidney stones",
-   "Plants along roadsides may have been sprayed with herbicide"
-  ],
-  "lookalikes": [
-   "Basswood or birch seedling \u2014 solid stem, no papery sheath at the nodes, leaves toothed rather than nearly entire",
-   "Giant knotweed (Reynoutria sachalinensis) \u2014 much larger leaves with a heart-shaped, not truncate, base",
-   "Bohemian knotweed (the hybrid) \u2014 intermediate leaf base; also regulated, so treat the same"
-  ],
-  "origin_status": "regulated",
-  "source": "auto (claude-opus-5)"
- },
- {
   "id": "common-milkweed",
   "common": "Common Milkweed",
   "scientific": "Asclepias syriaca",
