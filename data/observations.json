@@ -1,5 +1,22 @@
 [
  {
+  "id": "0AA7200E-AF28-4A2B-9896-4BB017AC1852_1_105_c",
+  "file": "0AA7200E-AF28-4A2B-9896-4BB017AC1852_1_105_c.jpg",
+  "species_id": "goldenrod",
+  "confidence": "high",
+  "note": "Dense clonal stand of tall goldenrod in a field edge, with early yellow panicles just opening at upper left and the characteristic single unbranched stems densely clothed in narrow, alternate, sharply toothed lance-shaped leaves. Rubus canes with palmate/trifoliate toothed leaves fill the lower left foreground.",
+  "taken": "",
+  "lat": "",
+  "lon": "",
+  "batch": "island-archive",
+  "hash": "44a093a5e37bcae8",
+  "id_attempts": 1,
+  "identified": "2026-08-02",
+  "also": [
+   "rubus"
+  ]
+ },
+ {
   "id": "2884C684-35C5-4796-A82D-3E751E3AA04B_1_201_a",
   "file": "2884C684-35C5-4796-A82D-3E751E3AA04B_1_201_a.jpg",
   "species_id": "unknown",
@@ -240,22 +257,5 @@
   "hash": "958eb169888bd696",
   "id_attempts": 1,
   "identified": "2026-08-02"
- },
- {
-  "id": "0AA7200E-AF28-4A2B-9896-4BB017AC1852_1_105_c",
-  "file": "0AA7200E-AF28-4A2B-9896-4BB017AC1852_1_105_c.jpg",
-  "species_id": "goldenrod",
-  "confidence": "high",
-  "note": "Dense clonal stand of tall goldenrod in a field edge, with early yellow panicles just opening at upper left and the characteristic single unbranched stems densely clothed in narrow, alternate, sharply toothed lance-shaped leaves. Rubus canes with palmate/trifoliate toothed leaves fill the lower left foreground.",
-  "taken": "",
-  "lat": "",
-  "lon": "",
-  "batch": "island-archive",
-  "hash": "44a093a5e37bcae8",
-  "id_attempts": 1,
-  "identified": "2026-08-02",
-  "also": [
-   "rubus"
-  ]
  }
 ]
