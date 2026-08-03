@@ -49,6 +49,12 @@ stake in the answer.
   transcribed from the current published rule. Check it against
   [the live list](https://www.maine.gov/dacf/php/horticulture/invasiveplants.shtml)
   before reporting anything to an agency.
+- **A description is not a species.** "Fern (unidentified colony)", "Unidentified mature
+  hardwood (bark only)" — these name a photograph, not an organism, and once one is in
+  the catalogue it is offered to the model as a match for every photo that follows.
+  The identifier refuses to create them and `reconcile` removes any that got in; the
+  photo stays unidentified, which is the true answer. See
+  [Reconciling the catalogue](#reconciling-the-catalogue).
 - **Genus-only records are marked `unknown` status**, not guessed, when the genus holds
   both native and introduced species. On the seed catalogue that's 10 of 41 — an honest
   number, and each one is a "go back and look" task.
@@ -128,6 +134,39 @@ writer:
 |---|---|---|
 | file, photo, photographed, latitude, longitude, AI identification, AI confidence, AI notes | pipeline | push → sheet |
 | STATUS, corrected species, verified by, verified date, field notes | **a person** | sheet → pull |
+| recorded? | pipeline | push → sheet |
+
+### Telling a steward whether their row landed
+
+`recorded?` is the last column and closes the loop. A refused verification otherwise
+exists only as a line in a CI log nobody opens, and the person who walked out there
+is left believing it was recorded.
+
+| It says | It means |
+|---|---|
+| *(blank)* | nothing entered yet |
+| `✓ recorded 2026-08-02` | it is in the survey |
+| `… will be recorded on the next sync` | valid, entered since the last pull |
+| `⚠ not recorded — needs a name in 'verified by'` | refused, with the reason. Fix the row and it syncs next run. |
+
+The rule that decides this is the same function the pull uses to decide what to
+apply (`verification_problem`), so the sheet can never tell someone their row is
+fine while the pipeline drops it.
+
+Two more things make the sheet usable by someone who has never read this file:
+
+- **A `Species` tab**, pushed with the records, listing every id with its common and
+  scientific name. `corrected species` takes an *id* — `japanese-knotweed`, not
+  "Japanese knotweed" — which nobody can be expected to guess, and a mistyped id is
+  the likeliest reason a real field check gets refused. It is now a dropdown you
+  pick from.
+- **Notes on every header cell** explaining what the column is for and what each
+  STATUS value means.
+
+Both dropdowns are deliberately **non-strict**: strict validation blocks pasting a
+column of values, which is exactly what a steward does after a day in the field. A
+bad value is caught by the sync and explained in `recorded?` — guarded without being
+obstructive.
 
 No field has two writers, so there is no merge and nothing to resolve. A steward can
 be editing while a batch run identifies new photos, and neither clobbers the other.
@@ -172,6 +211,57 @@ silently lost work.
 not exist, or — importantly — a verification with nobody's name against it. An
 unattributed verification is not a verification.
 
+### What happens when the sheet gets mangled
+
+It is a shared spreadsheet, so it will be. The pull runs unattended on a schedule,
+which raises the stakes on every one of these.
+
+| What someone does | What happens |
+|---|---|
+| Types garbage into STATUS | Refused, named in the output. Nothing written. |
+| `corrected` with no species, or a species id that doesn't exist | Refused. |
+| Fills in a verification but no name | Refused — an unattributed verification is not a verification. |
+| Edits a pipeline column (file, coordinates, the AI's answer) | Warning-protected in the sheet; overwritten on the next push. If they change `file`, the row stops matching a record and is ignored. |
+| **Deletes rows** | Those records simply aren't read. Existing verifications on them are untouched, and the next push puts the rows back. |
+| Adds a row with a made-up filename | Ignored — no such record. |
+| **Deletes, inserts or reorders a column** | **Everything stops.** See below. |
+| **Empties the STATUS column** | Blocked past two withdrawals. See below. |
+
+**A moved column is the dangerous one.** Every field is read by position — status is
+column I because that is where push put it. Shift the columns and each value is
+silently read as the field beside it: a steward's name as a species id, notes as a
+date. None of the value checks above catch it, because each value still looks
+plausible in its new place. So the header is verified before anything is believed:
+
+```
+The sheet's columns are not where the pipeline put them, so nothing can be read
+from it safely.
+     A: expected 'file', found 'file'
+  -> D: expected 'latitude', found 'longitude'
+  -> E: expected 'longitude', found 'AI identification'
+```
+
+Fix it by undoing the change (*File → Version history*), which preserves
+verifications. If the human columns are already lost, delete the `Records` tab and
+run `sheet-push` — it rebuilds from scratch, and anything not already pulled into
+`data/observations.json` is gone.
+
+**A mass withdrawal is the other one.** Select the STATUS column, press delete, and
+every field check ever recorded reads as "withdrawn" — applied on the next
+unattended pull. One or two people changing their mind is ordinary; a dozen at once
+is a mis-click, and this is the hardest data in the project to reconstruct, because
+it represents someone having walked out there. Past two, the pull stops and applies
+nothing at all:
+
+```bash
+python3 scripts/plantdb.py sheet-pull            # preview — always safe
+python3 scripts/plantdb.py sheet-pull --yes      # apply
+python3 scripts/plantdb.py sheet-pull --yes --force   # ...including >2 withdrawals
+```
+
+Underneath all of it, `data/observations.json` is in git, so any verification that
+was ever pulled is recoverable from history.
+
 ## Screening
 
 Contributor photos are screened before entering the survey. The check is an
@@ -186,6 +276,59 @@ accepted and noted.
 
 Rejected records stay in `data/observations.json` marked `rejected: true` so the
 pipeline doesn't re-process them; their images are not published.
+
+### The second filter: what counts as a survey record
+
+Passing the screener is not enough to be published. `withheld_reason` in
+`plantdb.py` asks three questions, and a record has to answer all of them:
+
+| Withheld when | Why |
+|---|---|
+| The screener rejected it | Not a photograph of vegetation. |
+| **It has no location, or no capture date** | A sighting is a claim that a species was *here*, on *this day*. Without both there is nothing to send anyone to check and nothing to compare against a later visit. |
+| Nothing in it could be identified | A habitat shot or a bark close-up is a fair vegetation photograph, but if no organism could be named it contributes no finding and only dilutes the pins that mean something. |
+
+A record survives the third test if a human has field-verified it, or if some other
+catalogue species is visible in the frame — a plant caught in the background is
+still a real record of it growing at that spot.
+
+Withheld records stay in `data/observations.json` and in `todo`. Nothing is deleted;
+the photo exists and a better one from the same spot may settle it.
+
+This is derived, not a stored flag (`is_publishable` in `plantdb.py`), so it
+corrects itself — the moment a re-run identifies the photo or a steward records a
+verdict on it, it publishes again with nothing to remember.
+
+Withholding a record hides it from the site but leaves its thumbnail hosted on R2,
+still reachable by URL. `publish` counts those and prints the cleanup:
+
+```bash
+python3 scripts/plantdb.py publish --prune-r2
+```
+
+## When a photo arrives with no date or location
+
+Coordinates come from the photograph's EXIF, so a photo that reaches the folder with
+its EXIF already stripped has none — and there is nothing the pipeline can do to
+recover it. That is not a bug on this side; the metadata was gone before the file
+arrived. The usual causes are a photo sent through a messaging app, uploaded via a
+web form, or re-exported, all of which strip EXIF by design.
+
+The tell is a photo whose EXIF block is a few dozen bytes instead of several
+kilobytes. One record in the current survey is like this
+(`0AA7200E-…`): no coordinates, no capture date. `verify` reports it as *of limited
+survey value*, which is the honest description — it is a real observation of a real
+plant that cannot be placed on the map.
+
+**A missing capture date is left blank, never guessed.** It used to fall back to the
+file's modification time, which for anything fetched from Drive is the moment we
+downloaded it — so the site printed "Photographed 2026-08-02" over a photograph
+whose date nobody knew. A survey that will not invent a species must not invent a
+date either.
+
+If you want the metadata preserved, ask contributors to share the original file —
+in Drive, *upload* the photo rather than pasting it into a message, and avoid
+"share a copy" options that re-encode.
 
 ## Location precision
 
@@ -282,7 +425,7 @@ still work with no network.
 ## Setup
 
 ```bash
-python3 -m venv .venv && .venv/bin/pip install anthropic
+python3 -m venv .venv && .venv/bin/pip install anthropic Pillow pillow-heif
 echo 'ANTHROPIC_API_KEY=sk-ant-...' > .env
 
 python3 scripts/plantdb.py ingest ~/Dropbox/sears-island-photos
@@ -291,11 +434,108 @@ python3 scripts/plantdb.py invasives               # the survey report
 python3 scripts/plantdb.py publish
 ```
 
-Automate it once you trust the output:
+## Running it on a schedule
+
+Two ways, and you should pick exactly one — both commit to `data/`, and running
+both means two writers racing over the same files. `doctor` warns if both are on.
+
+### In the cloud (`.github/workflows/survey-pipeline.yml`)
+
+Two schedules in one file, because identification goes through the Batch API at
+half price and batch results come back over hours, not seconds:
+
+| | When | What |
+|---|---|---|
+| **submit** | 07:23 UTC daily (≈2:23am ET) | pull steward verifications, ingest new photos from Drive, submit a batch, walk away |
+| **collect** | :53 on even hours | apply any batch that has finished, reconcile, publish, deploy |
+
+The Batch API discount is a **flat 50%, not time-of-day pricing** — running at 2am
+buys the results all night to land in, not a better rate. A collect tick with no
+open batch is one SQLite read and no API call, so running twelve of them a day
+costs nothing.
+
+The submit run uses `--batch --no-wait` deliberately. Waiting would hold a runner
+for up to 24 hours, and an interrupted wait is exactly how a batch gets lost. The
+batch id goes into `data/identifications.db`, which is committed — that commit is
+what makes the results recoverable. Every run also writes the outstanding batch ids
+into its GitHub job summary, so they survive even if that push fails:
+
+```bash
+python3 scripts/plantdb.py batches      # anything submitted and not yet collected?
+```
+
+**This workflow holds credentials, and `deploy.yml` still does not.** That split is
+the point: the workflow that only rebuilds HTML from committed JSON never sees a
+key, so a plain push still cannot leak one. Add these under *Settings → Secrets and
+variables → Actions*:
+
+| Secret | Value |
+|---|---|
+| `ANTHROPIC_API_KEY` | same key as `.env` |
+| `GOOGLE_SERVICE_ACCOUNT_JSON` | the **contents** of the JSON key file, not a path |
+| `GOOGLE_DRIVE_FOLDER_ID` | the shared inbox folder |
+| `GOOGLE_SHEET_ID` | the steward review sheet |
+| `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET` | as in `.env` |
+
+Trigger a first run by hand from the Actions tab (*Run workflow*) rather than
+waiting for the hour — it is the only way to find out whether a secret is wrong.
+
+**Two consequences worth knowing before you turn it on:**
+
+- **Originals stop accumulating locally.** In the cloud, `photos/` lives only for
+  the length of the run. Google Drive becomes the archive of full-resolution
+  originals — which it already effectively was, since that is where contributors
+  put them. `refresh-gps`, which re-reads coordinates from originals, stays a local
+  command and needs a local `photos/`.
+- **Don't run the pipeline locally at the same time.** `data/identifications.db` is
+  a binary file — if both sides commit to it, git cannot merge the conflict and you
+  would resolve it by picking one side and losing the other's paid-for
+  identifications. Pull before you do local work. `doctor` warns if both schedulers
+  are active.
+
+### No images in git, and how that survives a two-run batch
+
+Nothing image-shaped has ever been committed to this repo — `photos/`, `thumbs/`
+and `thumbs-local/` are all gitignored, published images are served from R2, and
+the whole history is under 2 MB. Keeping it that way is the point: git history is
+permanent, so deleting a photo later does not shrink the repo.
+
+Splitting identification across two runs puts one strain on that. A photo's
+thumbnail is only uploaded to R2 once something in it has been identified — so a
+photo ingested by the submit run is uploaded by a *collect* run, on a different
+machine, hours later. Two things carry it across:
+
+- **`thumbs/` rides between runs in the Actions cache.** Only the submit run writes
+  it, since only it brings in new images; saving on every collect tick would store
+  the whole directory a dozen times a day against the repo's 10 GB cache budget.
+- **`data/r2-manifest.json` is committed** (the one deliberate exception in
+  `.gitignore`). It records which images are already hosted, and it is the only
+  thing that knows an image exists when the local thumbnail does not. Ignored, it
+  would be empty exactly when that matters, and `publish` could not tell "already
+  uploaded" from "gone".
+
+So if the cache is ever dropped — GitHub evicts after 7 days unused, and daily runs
+keep it warm — photos already identified are unaffected, because their images are
+on R2 and the manifest says so. Any photo ingested and not yet identified loses its
+thumbnail, and `publish` **refuses to ship** rather than emitting a page of broken
+images:
+
+```
+! 1 publishable record(s) have no thumbnail locally and none on R2:
+      IMG_1234.jpg
+  Their images exist nowhere. Re-ingest them, then publish again:
+      python3 scripts/plantdb.py ingest-drive
+```
+
+### On your laptop
 
 ```bash
 ./scripts/install-watcher.sh ~/Dropbox/sears-island-photos
 ```
+
+A launchd agent running `autopilot.sh` every 15 minutes. Only runs when the machine
+is awake and online. Stop it with
+`launchctl unload ~/Library/LaunchAgents/com.mueller.searsisland.plist`.
 
 To publish:
 
@@ -329,6 +569,49 @@ content hash — because batch results come back in arbitrary order.
 Use the synchronous path when you want to watch the first few land; use `--batch`
 for anything bigger.
 
+### Reconciling the catalogue
+
+Every request in a batch is built from the catalogue as it stood when the batch was
+submitted, so **no request can see an entry created by another request in the same
+batch.** Two photos of the same lichen in one batch mint two entries — this is how
+the survey ended up with both "Pixie-cup Lichen" and "Pixie Cup Lichen (trumpet
+lichen)". No prompt fixes it; the information is not in the request. It is repaired
+after collection instead:
+
+```bash
+python3 scripts/plantdb.py reconcile        # show what would change
+python3 scripts/plantdb.py reconcile --yes  # apply it
+```
+
+This runs automatically at the end of `identify.py --batch` and `--collect`. It does
+two things:
+
+**Merges near-duplicates.** Entries merge on exact agreement after normalisation —
+the same common name, or the same binomial. The surviving entry keeps the *older id*,
+because that id may already be a link on the published site, and the *fuller
+write-up*, because that is what serves a reader. Records, `also` lists and the
+identification cache are all repointed, and the retired id is kept in `merged_from`
+so a replayed cached result resolves to the survivor instead of recreating the
+duplicate.
+
+A shared genus alone is never enough to merge: *Trifolium pratense* and *Trifolium
+repens* are two species, not one written up twice. Those are listed for you to judge.
+
+**Drops descriptions posing as species,** by the two tests in `non_answer_reason` —
+a hedge word in the common name, or a scientific name at a rank above genus
+(`-aceae`, `-ales`, `-phyta`, …; "Bryophyta sp." is the mosses, all of them). Their
+records go back to `unknown` with the model's own note intact, plus a line saying
+what was removed and why.
+
+Two things it will not touch, deliberately:
+
+- **Entries you wrote yourself.** Only machine-created entries (`source: "auto (…)"`)
+  are ever dropped. The seed catalogue has hedged entries a person put there on
+  purpose — "Bolete (unidentified)" — and an unattended run must not quietly delete
+  an editorial decision.
+- **Anything a person has verified a record against.** That would be deleting the
+  target of a field check. It says so and leaves it for you.
+
 ### Never paying twice for the same photo
 
 Three layers, all verifiable with `plantdb.py doctor` and the commands below:
@@ -349,6 +632,8 @@ python3 scripts/plantdb.py ingest DIR   # copy in, thumbnail, strip EXIF, keep p
 python3 scripts/plantdb.py ingest DIR --local   # ...but never commit or publish these
 python3 scripts/plantdb.py invasives    # survey report by regulatory status, with locations
 python3 scripts/plantdb.py invasives --all   # include natives
+python3 scripts/plantdb.py batches      # batches submitted and not yet collected
+python3 scripts/plantdb.py reconcile    # merge duplicate species, drop non-answers
 python3 scripts/plantdb.py verify       # data-quality check
 python3 scripts/plantdb.py publish      # build public/
 python3 scripts/plantdb.py todo         # unidentified photos
@@ -433,6 +718,21 @@ handles all three. Originals in `photos/` are left alone.
 
 Ships with 41 species from the upstream project (an inland Maine roadside walk),
 classified by status: 19 native, 10 undetermined, 8 introduced, 3 invasive, 1 regulated.
+
+**The site publishes only species something was actually photographed as.** The
+catalogue is two things at once and a reader should only ever see one of them: to
+the identifier it is vocabulary, there so the model matches a plant instead of
+inventing a name for it; to a reader of a page headed "Sears Island Flora Survey"
+it looks like an inventory of the island. Most of that vocabulary has never been
+photographed here, and four entries are flagged invasive or regulated — a reviewer
+filtering for invasives would have seen them listed beside genuine finds. So
+`publish` filters to what has a photograph behind it (`recorded_species`), and the
+rest stays in `data/species.json` doing the job it is for.
+
+The same reasoning is why `reconcile` drops auto-created entries nothing references.
+Retiring the Orono batch deleted its records but left the species they created —
+including *Japanese Knotweed*, status regulated, on a survey of an island it was
+never photographed on.
 
 Treat it as a starting vocabulary, not a baseline. Coastal island flora differs
 substantially from an inland roadside, and identification quality on this catalogue

@@ -10,7 +10,7 @@ Field Guide database tool.
 Ingest is safe to re-run: photos already in the library (matched by content hash)
 are skipped, so you can point it at the same folder repeatedly.
 """
-import argparse, hashlib, json, os, pathlib, shutil, subprocess, sys, datetime
+import argparse, hashlib, json, os, pathlib, re, shutil, subprocess, sys, datetime
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 PHOTOS, THUMBS, DATA = ROOT / "photos", ROOT / "thumbs", ROOT / "data"
@@ -27,7 +27,11 @@ SPECIES_F, OBS_F = DATA / "species.json", DATA / "observations.json"
 LOCAL_OBS_F = DATA / "observations-local.json"
 PUBCFG_F = DATA / "publish-config.json"       # tracked: where published images live
 R2_MANIFEST = DATA / "r2-manifest.json"       # gitignored: what we've already uploaded
-PRIVATE_F = DATA / "locations-private.json"   # gitignored: full-precision coords
+# Vestigial from upstream, where it was the gitignored full-precision copy behind
+# blurred public records. Here `blur` preserves precision and coordinates are
+# published as-is, so this holds nothing the tracked records do not — it is neither
+# gitignored nor private, whatever the filename says. Written at ingest, never read.
+PRIVATE_F = DATA / "locations-private.json"
 INVASIVE_F = DATA / "invasive-reference.json"
 DATA_JS = ROOT / "app" / "data.js"
 EXTS = {".jpg", ".jpeg", ".png", ".heic", ".heif", ".tif", ".tiff", ".webp"}
@@ -81,6 +85,11 @@ def save_obs(obs):
 # (a shared spreadsheet, say) conflict-free later: every field has one writer.
 VERIFY_STATUS = ("confirmed", "corrected", "rejected", "revisit")
 
+# How many verifications a single `sheet-pull` may withdraw before it stops and
+# asks. The pull runs unattended on a schedule, and an emptied STATUS column looks
+# exactly like a steward retracting everything.
+MAX_UNATTENDED_CLEARS = 2
+
 
 def effective_species(o):
     """The species to believe: a human correction if there is one, else the model's."""
@@ -105,9 +114,58 @@ def thumb_path(o):
     return thumb_dir(o) / o["file"]
 
 
+def withheld_reason(o):
+    """Why this record is not a survey record, or None if it is one.
+
+    Three ways a photograph fails to be evidence, and the survey needs all three
+    answered before it will publish one:
+
+      * It is not a photograph of vegetation. The screener says so.
+      * It cannot be placed or dated. A sighting is a claim that a species was HERE,
+        on THIS DAY; without both, there is nothing to send anyone to check and
+        nothing to compare against a later visit. The photo is real, but it is not
+        a survey record, and on the map it would be a pin with no coordinates and
+        in a list an undated one.
+      * Nothing in it could be identified. A habitat shot or a bark close-up is a
+        fair vegetation photograph, but if no organism could be named it contributes
+        no finding and only dilutes the pins that mean something.
+
+    Derived rather than stored as a flag, so it corrects itself — the moment a
+    re-run identifies the photo, or `refresh-gps` recovers coordinates from the
+    original, it publishes with no bookkeeping to remember. Withheld records stay
+    in the data and in `todo`; nothing is deleted.
+    """
+    if o.get("rejected"):
+        return "screened out — not a photograph of vegetation"
+    if not (o.get("lat") and o.get("lon")):
+        return "no location — nothing can be sent to check it"
+    if not o.get("taken"):
+        return "no capture date — the sighting cannot be placed in time"
+    if is_verified(o) or o.get("also"):
+        return None                        # a person looked, or something else in frame was named
+    if o.get("species_id", "unknown") == "unknown":
+        return "nothing in it could be identified"
+    return None
+
+
+def is_publishable(o):
+    return withheld_reason(o) is None
+
+
+def reviewable(o):
+    """Worth putting in front of a steward: it could still become a survey record.
+
+    An unidentified photo belongs in the sheet — someone who knows the flora can
+    name it, and that is exactly what `corrected` is for. A photo with no location
+    or date does not: there is no column a person could fill to fix it, so it would
+    only spend a reviewer's attention on something that can never publish.
+    """
+    return bool(not o.get("rejected") and o.get("lat") and o.get("lon") and o.get("taken"))
+
+
 def public_obs():
-    """Only what may be published: public file, minus anything the screener rejected."""
-    return [o for o in load(OBS_F, []) if not o.get("rejected")]
+    """Only what may be published: public file, minus anything that says nothing."""
+    return [o for o in load(OBS_F, []) if is_publishable(o)]
 
 
 def in_area(o, area):
@@ -143,6 +201,32 @@ def area_check(obs):
     mode = area.get("enforce", "auto")
     enforcing = bool(inside) if mode == "auto" else bool(mode)
     return area, inside, outside, enforcing
+
+
+def recorded_species(species, obs):
+    """Only the species some photograph in this set actually shows.
+
+    The catalogue is two things at once, and the site should only ever present one
+    of them. To the identifier it is vocabulary — 40-odd species carried over from
+    an inland roadside walk upstream, there so the model can match a plant instead
+    of inventing a name for it. To a reader of a page headed "Sears Island Flora
+    Survey" it looks like an inventory of the island.
+
+    Most of that vocabulary has never been photographed here, and four entries are
+    flagged invasive or regulated. A reviewer filtering for invasives would see them
+    listed beside genuine finds — a claim about contested ground that nothing in
+    this survey supports. So publishing shows what was photographed, and the rest
+    stays in data/species.json doing the job it is actually for.
+
+    `unknown` is always kept: the app falls back to it for any record whose species
+    is missing, and without it those records render as an error instead of a photo.
+    """
+    ref = {"unknown"}
+    for o in obs:
+        ref.add(o.get("species_id", "unknown"))
+        ref.add(effective_species(o))
+        ref.update(o.get("also") or [])
+    return [s for s in species if s["id"] in ref]
 
 
 def enriched_species():
@@ -255,8 +339,13 @@ def exif_of(path):
     if taken:
         # EXIF writes "YYYY:MM:DD HH:MM:SS"; the rest of the tool wants dashes.
         taken = taken.replace(":", "-", 2) + " +0000"
-    else:
-        taken = datetime.datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S +0000")
+    # No fallback to the file's mtime. That is when the file was written to this
+    # disk — for anything downloaded from Drive, the moment we downloaded it — and
+    # recording it as `taken` had the site print "Photographed 2026-08-02" over a
+    # photograph whose date nobody knows. It was also stamped "+0000" while being
+    # read in local time, so it was wrong twice. A survey that will not invent a
+    # species must not invent a date either; blank is the true answer and every
+    # consumer already handles it.
     return {"taken": taken, "lat": lat, "lon": lon}
 
 
@@ -301,11 +390,61 @@ def strip_exif(path):
     return True
 
 
-def make_thumb(src, dst):
+def to_jpeg(src, dst, max_px=None):
+    """Convert (and optionally shrink) an image to JPEG. True if dst was written.
+
+    Pillow first, `sips` second. This used to be sips alone, which is part of macOS
+    and does not exist on a Linux CI runner — so in the cloud every thumbnail failed
+    silently, nothing could be identified (identify reads the thumbnail), and the
+    whole scheduled pipeline was an expensive no-op. Pillow covers the runner;
+    sips stays as the fallback for a machine without it, which is how this ran for
+    its first year.
+
+    HEIC needs pillow-heif, which iPhones make this worth having: register it when
+    present and let the sips fallback take HEIC on a Mac without it.
+    """
     dst.parent.mkdir(parents=True, exist_ok=True)
-    r = subprocess.run(["sips", "-Z", str(THUMB_PX), "-s", "format", "jpeg", str(src),
-                        "--out", str(dst)], capture_output=True)
-    if r.returncode != 0 or not dst.exists():
+    try:
+        from PIL import Image, ImageOps
+        try:
+            import pillow_heif
+            pillow_heif.register_heif_opener()
+        except ImportError:
+            pass
+        with Image.open(src) as im:
+            # Apply the orientation tag before it is stripped, or every photo an
+            # iPhone recorded sideways stays sideways with nothing left to say so.
+            im = ImageOps.exif_transpose(im).convert("RGB")
+            if max_px:
+                im.thumbnail((max_px, max_px))
+            im.save(dst, "JPEG", quality=88)
+        if dst.exists():
+            return True
+    except ImportError:
+        pass                      # no Pillow — fall through to sips
+    except Exception as e:
+        print(f"  ! {src.name}: {type(e).__name__} reading image ({e}); trying sips")
+
+    cmd = ["sips"] + (["-Z", str(max_px)] if max_px else []) + \
+          ["-s", "format", "jpeg", str(src), "--out", str(dst)]
+    try:
+        r = subprocess.run(cmd, capture_output=True)
+    except FileNotFoundError:
+        return False              # neither Pillow nor sips; caller reports it
+    return r.returncode == 0 and dst.exists()
+
+
+def have_thumbnailer():
+    """Is there any way to make a thumbnail on this machine?"""
+    try:
+        import PIL  # noqa: F401
+        return "Pillow"
+    except ImportError:
+        return "sips" if shutil.which("sips") else None
+
+
+def make_thumb(src, dst):
+    if not to_jpeg(src, dst, THUMB_PX):
         return False
     strip_exif(dst)
     return True
@@ -346,15 +485,21 @@ def cmd_ingest(args):
         PHOTOS.mkdir(exist_ok=True)
         if src.suffix.lower() in (".jpg", ".jpeg"):
             shutil.copy2(src, dest)
-        else:
-            if subprocess.run(["sips", "-s", "format", "jpeg", str(src), "--out", str(dest)],
-                              capture_output=True).returncode != 0:
-                print(f"  ! could not convert {src.name}")
-                continue
+        elif not to_jpeg(src, dest):
+            print(f"  ! could not convert {src.name} — skipped")
+            continue
+        # No thumbnail, no record. identify.py reads the thumbnail, publish uploads
+        # it, and the site shows it, so a record without one is a row that can never
+        # become anything. Leaving it out means the photo is simply retried on the
+        # next run instead of sitting in the survey as a permanent blank.
         if not make_thumb(dest, (THUMBS_LOCAL if args.local else THUMBS) / dest.name):
-            print(f"  ! could not thumbnail {dest.name}")
+            print(f"  ! could not thumbnail {dest.name} — skipped, will retry next run")
+            dest.unlink(missing_ok=True)
+            continue
         e = exif_of(dest)
-        # Precise coordinates go to the gitignored sidecar; the tracked record is blurred.
+        # Both copies are full precision here — see PRIVATE_F above. The sidecar is
+        # kept only so a record's original coordinates survive an edit to
+        # observations.json; it is not a privacy boundary in this fork.
         private = load(PRIVATE_F, {})
         private[dest.name] = {"lat": e["lat"], "lon": e["lon"], "taken": e["taken"]}
         save(PRIVATE_F, private)
@@ -412,6 +557,10 @@ def cmd_build(args):
     for o in obs:
         o["thumb"] = f"{thumb_dir(o).name}/{o['file']}"
     DATA_JS.parent.mkdir(parents=True, exist_ok=True)
+    # Same filter publish applies, so previewing with `serve` shows what a reader
+    # will see rather than the full identification vocabulary. Local-only records
+    # count as recorded here — locally they are exactly what you are checking.
+    species = recorded_species(species, obs)
     payload = {"species": species, "observations": obs,
                "generated": datetime.datetime.now().strftime("%Y-%m-%d %H:%M")}
     notice = load(PUBCFG_F, {}).get("notice")
@@ -519,17 +668,18 @@ def cmd_verify(args):
     import re
     problems, warnings = [], []
 
-    for t in sorted(THUMBS.glob("*.jpg")) + sorted(THUMBS_LOCAL.glob("*.jpg")):
+    thumbs = sorted(THUMBS.glob("*.jpg")) + sorted(THUMBS_LOCAL.glob("*.jpg"))
+    for t in thumbs:
         head = t.read_bytes()[:8192]
         if b"Exif" in head or b"http://ns.adobe.com/xap" in head:
             problems.append(f"{t.relative_to(ROOT)} still has an EXIF/XMP segment")
 
     obs = load_obs()
-    missing = [o["file"] for o in obs if not o.get("lat")]
+    missing = [o["file"] for o in obs if not o.get("lat") or not o.get("taken")]
     imprecise = [o["file"] for o in obs
                  if o.get("lat") and len(o["lat"].split(".")[-1]) < 4]
     for f in missing:
-        warnings.append(f"{f} has no coordinates — of limited survey value")
+        warnings.append(f"{f} has no location and/or no capture date — withheld from the site")
     for f in imprecise:
         problems.append(f"{f} has a coordinate rounded below survey precision")
 
@@ -569,11 +719,19 @@ def cmd_verify(args):
             print("Or widen survey_area in data/publish-config.json if they belong here.")
         sys.exit(1)
     if warnings:
-        print(f"{len(warnings)} record(s) without coordinates:")
+        print(f"{len(warnings)} record(s) missing location or date:")
         for w in warnings[:5]:
             print(f"  - {w}")
         if len(warnings) > 5:
             print(f"  ... and {len(warnings) - 5} more")
+    # Say how many were examined. Images live on R2 and never enter git, so on a CI
+    # runner thumbs/ is usually empty — and "thumbnails carry no EXIF" printed after
+    # inspecting nothing reads like a passed privacy audit when none was performed.
+    if not thumbs:
+        print("Note: no local thumbnails to inspect, so the EXIF check examined nothing.")
+        print("      Images are on R2; run `verify` where the thumbnails are to audit them.")
+    else:
+        print(f"Inspected {len(thumbs)} thumbnail(s) for EXIF/XMP.")
     print(f"Check passed — thumbnails carry no EXIF; "
           f"{len(obs) - len(missing)}/{len(obs)} records have survey-grade coordinates.")
 
@@ -582,7 +740,7 @@ def cmd_publish(args):
     """Assemble a public/ folder: app + thumbnails + survey data.
 
     Coordinates are published at full precision — see the note at the top of this
-    file. Screened-out photos are withheld entirely.
+    file. Screened-out and unidentifiable photos are withheld entirely.
     """
     cmd_build(args)
     pub = ROOT / "public"
@@ -593,11 +751,12 @@ def cmd_publish(args):
 
     # Built from the source files, NOT from app/data.js — that file deliberately
     # merges in local-only records, and reading it back would republish them.
-    # Screened-out photos are excluded too: by definition a rejected photo isn't
-    # vegetation (someone's camera roll spilling in), so neither the record nor its
-    # thumbnail belongs on a public site.
+    # `is_publishable` excludes two kinds of photo: one the screener rejected (not
+    # vegetation — someone's camera roll spilling in), and one nothing could be
+    # named in. Neither the record nor its thumbnail belongs on a public site.
     kept = public_obs()
-    dropped = len(load(OBS_F, [])) - len(kept)
+    from collections import Counter
+    held = Counter(r for r in (withheld_reason(o) for o in load(OBS_F, [])) if r)
     withheld = len(load(LOCAL_OBS_F, []))
     # Images either ride along in public/ or come from R2. The public base URL is
     # not a secret and lives in a tracked config, so the deploy runner can build
@@ -608,7 +767,8 @@ def cmd_publish(args):
     for o in kept:
         o.pop("hash", None)
         o["thumb"] = f"{base}/{prefix}/{o['file']}" if base else f"thumbs/{o['file']}"
-    payload = {"species": enriched_species(), "observations": kept,
+    species = recorded_species(enriched_species(), kept)
+    payload = {"species": species, "observations": kept,
                "generated": datetime.datetime.now().strftime("%Y-%m-%d %H:%M")}
     if cfg.get("notice"):
         payload["notice"] = cfg["notice"]
@@ -628,13 +788,54 @@ def cmd_publish(args):
                 n += 1
     (pub / ".nojekyll").touch()
     size = sum(f.stat().st_size for f in pub.rglob("*") if f.is_file()) / 1e6
-    where = f"{n} thumbnail(s) on R2" if base else f"{n} thumbnails bundled"
+    # `n` from the R2 path is everything ever uploaded, which is not the same as
+    # what this site references — a record that stops being published leaves its
+    # object behind. Report what the site actually uses, and name the difference.
+    shown = len(kept) if base else n
+    where = f"{shown} thumbnail(s) on R2" if base else f"{n} thumbnails bundled"
     print(f"Built public/ — {len(payload['species'])} species, {where}, {size:.1f} MB.")
-    if dropped:
-        print(f"Withheld {dropped} screened-out photo(s) — not published.")
+    if base:
+        orphans = sorted(set(load(R2_MANIFEST, {})) - {o["file"] for o in kept})
+        if orphans:
+            print(f"{len(orphans)} object(s) on R2 are no longer referenced by the site. "
+                  "They stay publicly reachable by URL until deleted:")
+            print("  python3 scripts/plantdb.py publish --prune-r2")
+        if orphans and getattr(args, "prune_r2", False):
+            prune_r2(orphans, prefix)
+    if held:
+        print(f"Withheld {sum(held.values())} photo(s) — kept in the data, not published:")
+        for reason, n in held.most_common():
+            print(f"  {n:>3}  {reason}")
     if withheld:
         print(f"Withheld {withheld} local-only record(s) from {LOCAL_OBS_F.name} — not published.")
     print("Full-resolution originals stay local in photos/ and are never published.")
+
+
+def prune_r2(orphans, prefix):
+    """Delete R2 objects the published site no longer references.
+
+    Withholding a record hides it from the site but leaves its image hosted, still
+    reachable by anyone with the URL. Local thumbnails are untouched, so a record
+    that becomes publishable again just re-uploads on the next publish — this is
+    reversible, which is why it does not ask twice.
+    """
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+    import r2
+    creds = r2.config()
+    if not creds:
+        print("  ! R2 credentials not set — cannot prune. Nothing deleted.")
+        return
+    manifest, gone = load(R2_MANIFEST, {}), 0
+    for name in orphans:
+        try:
+            r2.delete(creds, f"{prefix}/{name}")
+            manifest.pop(name, None)
+            gone += 1
+        except Exception as e:
+            print(f"  ! could not delete {name}: {e}")
+    save(R2_MANIFEST, manifest)
+    print(f"Pruned {gone} unreferenced object(s) from R2. "
+          "Local thumbnails kept — they re-upload if a record publishes again.")
 
 
 def upload_thumbs(kept, prefix, args):
@@ -648,14 +849,32 @@ def upload_thumbs(kept, prefix, args):
     import r2
 
     have = load(R2_MANIFEST, {})
-    todo = []
+    todo, lost = [], []
     for o in kept:
         t = THUMBS / o["file"]
         if not t.exists():
+            # No local copy. Fine if it is already hosted — that is the normal case
+            # on a fresh clone and on any runner that did not ingest this photo. Not
+            # fine otherwise: the site would go out pointing at an image that exists
+            # nowhere. Silently skipping this is how you ship a page of broken
+            # thumbnails and only find out by looking.
+            if o["file"] not in have:
+                lost.append(o["file"])
             continue
         h = sha(t)
         if have.get(o["file"]) != h:
             todo.append((o["file"], t, h))
+
+    if lost:
+        print(f"  ! {len(lost)} publishable record(s) have no thumbnail locally and none "
+              "on R2:")
+        for name in lost[:8]:
+            print(f"      {name}")
+        if len(lost) > 8:
+            print(f"      ... and {len(lost) - 8} more")
+        print("    Their images exist nowhere. Re-ingest them, then publish again:")
+        print("      python3 scripts/plantdb.py ingest-drive")
+        sys.exit(1)
 
     if getattr(args, "no_upload", False):
         if todo:
@@ -893,7 +1112,7 @@ def cmd_ingest_drive(args):
     if staging.exists():
         shutil.rmtree(staging)
     staging.mkdir()
-    got = 0
+    got, fetched = 0, []
     for f in new:
         dest = staging / f["name"]
         n = 1
@@ -905,9 +1124,7 @@ def cmd_ingest_drive(args):
         except Exception as e:
             print(f"  ! {f['name']}: download failed — {e}")
             continue
-        # Recorded only after the bytes are on disk, so a failed download is retried
-        # on the next run rather than silently skipped forever.
-        idcache.drive_record(con, f["id"], f["name"])
+        fetched.append(f)
         got += 1
         print(f"  + {f['name']}")
     print(f"\nDownloaded {got} file(s) to {staging.name}/")
@@ -915,14 +1132,50 @@ def cmd_ingest_drive(args):
         args.folder = str(staging)
         args.batch = args.batch or datetime.date.today().isoformat()
         cmd_ingest(args)
+    # Marked as fetched only once ingest has actually run, and only for files that
+    # reached the library. Recording them at download time meant a crash in between
+    # — or a photo ingest skipped, or the staging directory wiped at the start of
+    # the next run — left the id marked seen with nothing to show for it, and that
+    # photo was never fetched again. Re-downloading costs bandwidth; losing a
+    # contributor's photograph costs the survey a record it cannot get back.
+    in_library = {o.get("hash") for o in load_obs()}
+    for f in fetched:
+        p = staging / f["name"]
+        if not p.exists() or sha(p) in in_library:
+            idcache.drive_record(con, f["id"], f["name"])
+        else:
+            print(f"  ! {f['name']} did not make it into the library — will retry next run")
     shutil.rmtree(staging, ignore_errors=True)
+
+
+def verification_problem(v, species_ids):
+    """Why these human columns are not an acceptable verification, or None.
+
+    One definition, used by both directions: the pull decides what to apply with it,
+    and the push writes the reason back into the sheet's "recorded?" column with it.
+    If those two ever disagreed, the sheet would tell a steward their row was fine
+    while the pipeline quietly dropped it — which is the failure this whole column
+    exists to prevent.
+    """
+    status = (v.get("status") or "").strip()
+    if not status:
+        return None                     # blank is "not reviewed", not an error
+    if status not in VERIFY_STATUS:
+        return f"status '{status}' is not one of {', '.join(VERIFY_STATUS)}"
+    if status == "corrected" and not v.get("species_id"):
+        return "'corrected' needs an id in 'corrected species'"
+    if v.get("species_id") and v["species_id"] not in species_ids:
+        return f"unknown species id '{v['species_id']}' — pick one from the Species tab"
+    if not v.get("by"):
+        return "needs a name in 'verified by' — an unattributed verification is not one"
+    return None
 
 
 def cmd_sheet_push(args):
     """Send the machine columns to the sheet. Never touches the human columns."""
     sheets, cfg = _sheets()
     svc = sheets.service(cfg)
-    obs = load_obs()
+    obs = [o for o in load_obs() if reviewable(o)]
     species = {s["id"]: s for s in enriched_species()}
     base = (load(PUBCFG_F, {}).get("r2_public_base") or "").rstrip("/")
     if base:
@@ -930,8 +1183,32 @@ def cmd_sheet_push(args):
     # Read the human columns first and write them straight back, so a push can never
     # blank a steward's work — even one made between this read and the write.
     existing = sheets.pull(svc, cfg)
-    n = sheets.push(svc, cfg, obs, species, base, existing)
-    print(f"Pushed {n} record(s) to the sheet.")
+
+    # Tell each steward whether their row actually landed. A refused verification
+    # otherwise only exists as a line in a CI log nobody opens, and the person who
+    # walked out there is left believing it was recorded.
+    ids = set(species)
+    feedback, refused = {}, 0
+    for o in obs:
+        v = existing.get(o["file"], {})
+        problem = verification_problem(v, ids)
+        if problem:
+            feedback[o["file"]] = f"⚠ not recorded — {problem}"
+            refused += 1
+        elif not (v.get("status") or "").strip():
+            feedback[o["file"]] = ""
+        elif o.get("verified"):
+            feedback[o["file"]] = f"✓ recorded {o['verified'].get('date', '')}".strip()
+        else:
+            feedback[o["file"]] = "… will be recorded on the next sync"
+
+    n_sp = sheets.push_species(svc, cfg, list(species.values()))
+    n = sheets.push(svc, cfg, obs, species, base, existing, feedback)
+    print(f"Pushed {n} record(s) to the sheet, and {n_sp} species to the "
+          f"'{sheets.SPECIES_TAB}' tab for the corrected-species dropdown.")
+    if refused:
+        print(f"  ! {refused} row(s) have a verification the sync cannot accept. "
+              f"The reason is now in each row's 'recorded?' column.")
     print(f"  https://docs.google.com/spreadsheets/d/{cfg['sheet_id']}/edit")
     if not base:
         print("  (no r2_public_base set — the photo column will be empty)")
@@ -957,18 +1234,10 @@ def cmd_sheet_pull(args):
             if cur:
                 changes.append((o, None, f"clear verification (was {cur.get('status')})"))
             continue
-        if v["status"] not in VERIFY_STATUS:
-            problems.append(f"{f}: status '{v['status']}' is not one of {', '.join(VERIFY_STATUS)}")
-            continue
-        if v["status"] == "corrected" and not v["species_id"]:
-            problems.append(f"{f}: 'corrected' needs a corrected species id")
-            continue
-        if v["species_id"] and v["species_id"] not in ids:
-            problems.append(f"{f}: unknown species id '{v['species_id']}'")
-            continue
-        if not v["by"]:
-            problems.append(f"{f}: needs a name in 'verified by' — an unattributed "
-                            f"verification is not a verification")
+        # Same rules the push writes into the sheet's "recorded?" column, so a
+        # steward is never told their row is fine while this quietly drops it.
+        if (problem := verification_problem(v, ids)):
+            problems.append(f"{f}: {problem}")
             continue
         new = {"status": v["status"], "by": v["by"],
                "date": v["date"] or datetime.date.today().isoformat()}
@@ -984,6 +1253,27 @@ def cmd_sheet_pull(args):
     if not changes:
         print("No verification changes in the sheet." if not problems else "\nNo applicable changes.")
         return
+
+    # Clearing a verification is the one destructive thing a pull can do, and it is
+    # indistinguishable from an accident: select the STATUS column, press delete,
+    # and every field check ever recorded is withdrawn on the next hourly run. A
+    # steward changing their mind about one or two records is ordinary; a dozen at
+    # once is a mis-click. Withdrawals are the hardest data here to reconstruct —
+    # they represent someone having walked out there — so past a small number this
+    # stops and waits for a person.
+    clears = [c for c in changes if c[1] is None]
+    if len(clears) > MAX_UNATTENDED_CLEARS and not args.force:
+        print(f"\n  ! {len(clears)} verification(s) would be WITHDRAWN in one pull:")
+        for o, _, desc in clears[:10]:
+            print(f"      {o['file'][:14]}…  {desc}")
+        if len(clears) > 10:
+            print(f"      ... and {len(clears) - 10} more")
+        print(f"\n    More than {MAX_UNATTENDED_CLEARS} at once usually means the STATUS column")
+        print("    was cleared or shifted by accident, not that this many people changed")
+        print("    their mind. Nothing was applied — not even the other changes.")
+        print("    Check the sheet, then re-run with --force if it is genuinely right.")
+        sys.exit(1)
+
     print(f"\n{len(changes)} change(s) from the sheet:")
     for o, new, desc in changes[:20]:
         print(f"  {o['file'][:14]}…  {desc}")
@@ -1024,6 +1314,28 @@ def cmd_cache(args):
         cin, cout = idcache.PRICES.get("claude-opus-5", (0, 0))
         est = len(uncached) * (4408 * cin + 750 * cout)
         print(f"{len(uncached)} would cost about ${est:.2f} to identify at current rates.")
+
+
+def cmd_batches(args):
+    """Batches submitted to the Batch API and not yet collected.
+
+    A submitted batch is money already spent; the id is the only way to get the
+    results. Losing it means paying again and never collecting the first run — so
+    this exists to answer "is anything outstanding?" without reading the database
+    by hand. Nothing else in the pipeline shows it.
+    """
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+    import idcache
+    opens = idcache.open_batches(idcache.connect())
+    if not opens:
+        print("No batches awaiting collection.")
+        return
+    print(f"{len(opens)} batch(es) submitted and not yet collected:\n")
+    for bid, created, n, model, region in opens:
+        print(f"  {bid}")
+        print(f"      {n} photo(s), {model}, submitted {created}")
+    print("\nCollect them with:  .venv/bin/python scripts/identify.py --collect")
+    print("A batch may take up to 24 hours; results are kept for 29 days.")
 
 
 def cmd_doctor(args):
@@ -1090,9 +1402,25 @@ def cmd_doctor(args):
     except ImportError:
         pass
 
+    tn = have_thumbnailer()
+    check(bool(tn), f"Thumbnailer available ({tn})",
+          "No way to make a thumbnail — install Pillow (`pip install Pillow pillow-heif`) "
+          "or run on macOS, which has `sips`. Without one, ingest skips every photo.")
+
+    # Scheduling is satisfied by either the cloud workflow or the local launchd
+    # agent — reporting the laptop watcher as outstanding when the pipeline runs
+    # hourly in Actions would be telling you to fix something that is not broken.
     plist = pathlib.Path.home() / "Library/LaunchAgents/com.mueller.searsisland.plist"
-    check(plist.exists(), "Watcher installed",
-          "Watcher not installed — ./scripts/install-watcher.sh <folder> (optional; manual runs work)")
+    cloud = (ROOT / ".github/workflows/survey-pipeline.yml").exists()
+    check(plist.exists() or cloud,
+          "Pipeline scheduled in GitHub Actions (nightly batch, collected every 2h)"
+          if cloud else "Watcher installed",
+          "Nothing runs the pipeline on a schedule — either add the Actions workflow "
+          "(see the README) or ./scripts/install-watcher.sh <folder>. Manual runs work.")
+    if cloud and plist.exists():
+        todo.append("Both the cloud workflow and the local watcher are active — they will "
+                    "race to commit data/. Stop one:  launchctl unload "
+                    "~/Library/LaunchAgents/com.mueller.searsisland.plist")
 
     print("READY:")
     for x in ok:
@@ -1213,6 +1541,342 @@ def cmd_promote(args):
     print("To undo before pushing:  git checkout -- data/observations.json")
 
 
+# --- Catalogue hygiene -----------------------------------------------------
+# An automatically written catalogue fails in two ways that cannot be prevented at
+# the moment of writing, only repaired afterwards:
+#
+#   1. NEAR-DUPLICATES. Every batch request is built from the catalogue as it stood
+#      when the batch was submitted, so no request can see an entry created by a
+#      sibling request in the same batch. Two photos of the same lichen therefore
+#      mint two entries ("Pixie-cup Lichen" and "Pixie Cup Lichen (trumpet
+#      lichen)"). Nothing inside a request can fix this — it is reconciled after
+#      collection.
+#
+#   2. DESCRIPTIONS POSING AS SPECIES. "Fern (unidentified colony)" describes a
+#      photograph, not an organism. identify.py refuses to create these now, but
+#      the catalogue is sent with every future photo, so one that got in keeps
+#      offering itself as a match. It has to be taken back out.
+#
+# The tests below are shared with identify.py so the gate that refuses to create
+# these and the pass that removes them can never disagree about what one is.
+
+# Ranks above genus have standardised suffixes in botanical and mycological
+# nomenclature. A "scientific name" ending in one of them names a group, not an
+# organism: "Bryophyta sp." is the mosses — all of them. It is the reliable tell
+# that an answer is a description rather than an identification. A genus is the
+# coarsest rank this survey treats as a finding, which is also what the identifier
+# is told to under-claim to.
+ABOVE_GENUS = ("phyta", "phytina", "phyceae", "opsida", "mycota", "mycotina",
+               "mycetes", "ales", "aceae", "oideae")
+
+# Words that mark a name as a non-answer. Deliberately does NOT include "possible",
+# "probable" or "cf." — "Japanese Knotweed (possible young shoot)" is a hedged
+# claim about a real species, and hedged invasive leads are the point of the
+# survey, not noise to be filtered out.
+HEDGE_WORDS = ("unidentified", "unidentifiable", "indeterminate", "indet",
+               "unknown", "unnamed", "mixed", "assorted", "various")
+
+
+def norm_common(name):
+    """Common name reduced to comparable form: no case, punctuation or parentheticals.
+
+    'Pixie-cup Lichen' and 'Pixie Cup Lichen (trumpet lichen)' both land on
+    'pixie cup lichen', which is what makes them detectably the same entry.
+    """
+    s = re.sub(r"\([^)]*\)", " ", (name or "").lower())
+    return " ".join(re.sub(r"[^a-z0-9]+", " ", s).split())
+
+
+def norm_sci(name):
+    """Scientific name reduced to genus (+ epithet), dropping qualifiers.
+
+    'Cladonia sp. (pyxidata/chlorophaea group)' and 'Cladonia sp.' both reduce to
+    'cladonia'. Two tokens means a binomial; one means genus only.
+    """
+    s = re.sub(r"\([^)]*\)", " ", (name or "").lower())
+    s = re.sub(r"\b(sp|spp|cf|aff|var|subsp|ssp|sect|group|complex|agg)\b\.?", " ", s)
+    return " ".join(re.sub(r"[^a-z0-9]+", " ", s).split()[:2])
+
+
+def non_answer_reason(sp):
+    """Why this catalogue entry is a description rather than a species, or None.
+
+    Two independent tests, either sufficient: a hedge word in the common name, and
+    a scientific name that is not a genus. They agree on every case seen so far,
+    which is the point — one of them catches a naming style the other misses.
+    """
+    common = norm_common(sp.get("common"))
+    for w in HEDGE_WORDS:
+        if re.search(rf"\b{w}", common):
+            return f'"{w}" in the name — a description of the photo, not a taxon'
+    sci = norm_sci(sp.get("scientific"))
+    if not sci:
+        return "no scientific name at all"
+    head = sci.split()[0]
+    for suf in ABOVE_GENUS:
+        if head.endswith(suf):
+            return f"'{sp.get('scientific')}' is a rank above genus, not an organism"
+    return None
+
+
+def _refcount(obs, sid):
+    """How many records lean on this species id, by any route."""
+    n = 0
+    for o in obs:
+        if o.get("species_id") == sid or sid in (o.get("also") or []):
+            n += 1
+        elif (o.get("verified") or {}).get("species_id") == sid:
+            n += 1
+    return n
+
+
+def dup_groups(species):
+    """Group entries that are the same organism written up twice.
+
+    Merged on exact agreement after normalisation — same common name, or the same
+    binomial. A shared genus alone is NOT enough: two Cladonia species are two
+    species, and collapsing them would destroy a real distinction rather than a
+    duplicated one. Those are reported as candidates instead.
+    """
+    parent = {sp["id"]: sp["id"] for sp in species}
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    buckets = {}
+    for sp in species:
+        if sp["id"] == "unknown":
+            continue
+        if (c := norm_common(sp.get("common"))):
+            buckets.setdefault(("common", c), []).append(sp["id"])
+        s = norm_sci(sp.get("scientific"))
+        if len(s.split()) == 2:                      # a binomial names one species
+            buckets.setdefault(("sci", s), []).append(sp["id"])
+    for ids in buckets.values():
+        for other in ids[1:]:
+            ra, rb = find(ids[0]), find(other)
+            if ra != rb:
+                parent[ra] = rb
+
+    groups = {}
+    for sp in species:                               # file order == creation order
+        if sp["id"] != "unknown":
+            groups.setdefault(find(sp["id"]), []).append(sp)
+    return [g for g in groups.values() if len(g) > 1]
+
+
+def near_miss_groups(species, merged_ids):
+    """Genus-level entries sitting next to named ones in the same genus.
+
+    Only reported when at least one side is genus-only, because that is the case
+    where the two might be the same plant written up twice. Two full binomials in
+    one genus are simply two species — Trifolium pratense and Trifolium repens are
+    not a near-duplicate, and reporting them every run would train the eye to skip
+    this section.
+    """
+    by_genus = {}
+    for sp in species:
+        if sp["id"] == "unknown" or sp["id"] in merged_ids:
+            continue
+        if (g := norm_sci(sp.get("scientific")).split()):
+            by_genus.setdefault(g[0], []).append(sp)
+    return [v for v in by_genus.values() if len(v) > 1
+            and any(len(norm_sci(sp.get("scientific")).split()) == 1 for sp in v)]
+
+
+def _repoint(obs, mapping):
+    """Rewrite every species reference a record holds.
+
+    `verified.species_id` is included on purpose. A merge renames a species; it
+    does not overrule anybody's verdict. The human's answer still says exactly what
+    it said, under the id that survived — which is the only way it stays true.
+    Nothing else under `verified` is touched.
+    """
+    for o in obs:
+        if o.get("species_id") in mapping:
+            o["species_id"] = mapping[o["species_id"]]
+        v = o.get("verified") or {}
+        if v.get("species_id") in mapping:
+            v["species_id"] = mapping[v["species_id"]]
+        if (also := o.get("also")):
+            seen, new = set(), []
+            for a in also:
+                a = mapping.get(a, a)
+                if a != o.get("species_id") and a not in seen:
+                    seen.add(a)
+                    new.append(a)
+            if new:
+                o["also"] = new
+            else:
+                o.pop("also")
+
+
+def reconcile(species, obs, apply, log=print):
+    """Drop descriptions, merge duplicates. Returns (dropped, merged, renames).
+
+    Order matters: the drop pass runs first so a merge never has to choose between
+    two entries that both should not exist.
+    """
+    dropped, merged, renames = [], [], {}
+    auto = [sp for sp in species if str(sp.get("source", "")).startswith("auto (")]
+
+    # Only auto-created entries are ever dropped. The seed catalogue contains
+    # hedged entries a person put there deliberately ("Bolete (unidentified)"),
+    # and an unattended run must not quietly delete somebody's editorial choice.
+    # An entry a human has verified a record against is likewise off limits: that
+    # would be deleting the target of a field check, which is not ours to do.
+    verified_ids = {(o.get("verified") or {}).get("species_id") for o in obs}
+    for sp in auto:
+        reason = non_answer_reason(sp)
+        if not reason:
+            continue
+        if sp["id"] in verified_ids:
+            log(f"  keeping {sp['id']} — {reason}, but a person has verified a record "
+                f"against it. Fix it by hand or with `confirm`.")
+            continue
+        dropped.append((sp, reason, _refcount(obs, sp["id"])))
+
+    if apply and dropped:
+        gone = {sp["id"]: (sp, reason) for sp, reason, _ in dropped}
+        for o in obs:
+            sid = o.get("species_id")
+            if sid in gone:
+                sp, reason = gone[sid]
+                o["species_id"] = "unknown"
+                # Not "unidentified": that would put the photo back in the queue for
+                # the next ordinary run, which would buy the same non-answer again.
+                # It stays visible to `todo` and to --all-unknown, where a person has
+                # chosen to spend money on it.
+                o["confidence"] = "low"
+                note = (o.get("note") or "").strip()
+                o["note"] = (note + " " if note else "") + (
+                    f'[Catalogue entry "{sp["common"]}" removed: {reason}. '
+                    f"This photo remains unidentified.]")
+            if (also := o.get("also")):
+                keep = [a for a in also if a not in gone]
+                if keep:
+                    o["also"] = keep
+                else:
+                    o.pop("also")
+        species[:] = [sp for sp in species if sp["id"] not in gone]
+
+    for group in dup_groups(species):
+        keep = group[0]                                  # earliest: its id is published
+        best = max(group, key=lambda sp: len(json.dumps(sp, ensure_ascii=False)))
+        losers = [sp for sp in group if sp["id"] != keep["id"]]
+        merged.append((keep, best, losers, [_refcount(obs, sp["id"]) for sp in group]))
+        renames.update({sp["id"]: keep["id"] for sp in losers})
+
+    if apply and merged:
+        for keep, best, losers, _ in merged:
+            i = next(n for n, sp in enumerate(species) if sp["id"] == keep["id"])
+            # Keep the oldest id — it may already be a link on the published site —
+            # but the fullest write-up, which is what a reader is actually served by.
+            entry = {**best, "id": keep["id"]}
+            entry["merged_from"] = sorted({sp["id"] for sp in losers}
+                                          | set(entry.get("merged_from") or []))
+            species[i] = entry
+        drop_ids = set(renames)
+        species[:] = [sp for sp in species if sp["id"] not in drop_ids]
+        _repoint(obs, renames)
+
+    # Orphans. An auto-created entry exists only because a photo matched it, so when
+    # those records go — `remove --batch`, a re-identification, a correction — the
+    # entry is left standing with nothing behind it and the site publishes a species
+    # nobody photographed here. That is how retiring the Orono proof-of-concept
+    # batch left "Japanese Knotweed (regulated)" on a survey of an island it was
+    # never photographed on: exactly the false positive this project cannot afford.
+    #
+    # Last, so a duplicate is merged into its survivor rather than orphaned, and a
+    # description is dropped for the honest reason rather than this one.
+    already = {sp["id"] for sp, _, _ in dropped} | set(renames)
+    orphans = [
+        (sp, "nothing references it — the records it was created from are gone", 0)
+        for sp in species
+        if str(sp.get("source", "")).startswith("auto (")
+        and sp["id"] not in already
+        and sp["id"] not in verified_ids
+        and not _refcount(obs, sp["id"])
+    ]
+    if apply and orphans:
+        gone = {sp["id"] for sp, _, _ in orphans}
+        species[:] = [sp for sp in species if sp["id"] not in gone]
+    dropped += orphans
+
+    return dropped, merged, renames
+
+
+def cmd_reconcile(args):
+    """Repair the catalogue after a batch: drop descriptions, merge duplicates.
+
+    Runs automatically after `identify.py --collect`; also available on its own,
+    because the entries already in the catalogue predate the gate that now stops
+    them being written.
+    """
+    species, obs = load(SPECIES_F, []), load_obs()
+    dropped, merged, renames = reconcile(species, obs, apply=False)
+
+    if dropped:
+        print(f"{len(dropped)} auto-created entr(ies) do not belong in the catalogue:\n")
+        for sp, reason, n in dropped:
+            flag = {"regulated": "  ** REGULATED **", "invasive": "  * invasive *"}.get(
+                sp.get("origin_status"), "")
+            print(f"  {sp['id']}{flag}")
+            print(f"      {sp['common']!r}  ({sp['scientific']})")
+            print(f"      {reason}")
+            if n:
+                print(f"      {n} record(s) would go back to unidentified")
+        print()
+    if merged:
+        print(f"{len(merged)} near-duplicate group(s):\n")
+        for keep, best, losers, counts in merged:
+            print(f"  {keep['id']}  ←  {', '.join(sp['id'] for sp in losers)}")
+            print(f"      {keep['common']!r}  ({keep['scientific']})")
+            src = "its own" if best["id"] == keep["id"] else f"{best['id']}'s (fuller)"
+            print(f"      keeping the id {keep['id']!r} and {src} write-up")
+            print(f"      {sum(counts)} record(s) would end up on it")
+        print()
+
+    near = near_miss_groups(species, set(renames) | {sp["id"] for sp, _, _ in dropped})
+    if near:
+        print("Same genus, different names — NOT merged automatically; two species in")
+        print("one genus are two species. Check these yourself:\n")
+        for g in near:
+            for sp in g:
+                print(f"  {sp['id']:<40} {sp['common']}  ({sp['scientific']})")
+            print()
+
+    if not dropped and not merged:
+        print("Catalogue is clean — nothing to drop, nothing to merge.")
+        return
+    if not args.yes:
+        print("Nothing changed. Re-run with --yes to apply.")
+        return
+
+    reconcile(species, obs, apply=True)
+    save(SPECIES_F, species)
+    save_obs(obs)
+    if renames:
+        # The identification cache is keyed by photo, and remembers which species
+        # each result resolved to. Left stale, replaying a cached result would find
+        # its id missing and mint the duplicate all over again.
+        sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+        import idcache
+        con = idcache.connect()
+        for old, new in renames.items():
+            con.execute("UPDATE identifications SET species_id = ? WHERE species_id = ?",
+                        (new, old))
+        con.commit()
+        print(f"Repointed {len(renames)} id(s) in the identification cache too.")
+    cmd_build(args)
+    print(f"\nDropped {len(dropped)}, merged {len(merged)} group(s). "
+          f"{len(species)} species remain.")
+    print("Run `publish` and push to update the site.")
+
+
 def cmd_serve(args):
     """Preview the local app, with caching disabled.
 
@@ -1295,8 +1959,12 @@ if __name__ == "__main__":
     sp_.set_defaults(func=cmd_sheet_push)
     pl = sub.add_parser("sheet-pull", help="read steward verifications back from the sheet")
     pl.add_argument("--yes", action="store_true", help="apply (otherwise just previews)")
+    pl.add_argument("--force", action="store_true",
+                    help=f"allow withdrawing more than {MAX_UNATTENDED_CLEARS} verifications at once")
     pl.set_defaults(func=cmd_sheet_pull)
     sub.add_parser("cache", help="what we've already paid to identify, and what it cost").set_defaults(func=cmd_cache)
+    sub.add_parser("batches", help="batches submitted to the Batch API and not yet collected")\
+       .set_defaults(func=cmd_batches)
     sub.add_parser("doctor", help="report what is configured and what still blocks a run").set_defaults(func=cmd_doctor)
     rm = sub.add_parser("remove", help="delete records, their thumbnails and their R2 objects")
     rm.add_argument("--batch", help="every record from this batch")
@@ -1314,11 +1982,16 @@ if __name__ == "__main__":
     rg = sub.add_parser("refresh-gps", help="re-read coordinates from the originals in photos/")
     rg.add_argument("--force", action="store_true", help="overwrite coordinates that are already set")
     rg.set_defaults(func=cmd_refresh_gps)
+    rc = sub.add_parser("reconcile", help="merge duplicate species and drop descriptions posing as species")
+    rc.add_argument("--yes", action="store_true", help="actually apply it")
+    rc.set_defaults(func=cmd_reconcile)
     sub.add_parser("species", help="list species ids").set_defaults(func=cmd_species)
     sub.add_parser("todo", help="list photos not yet identified").set_defaults(func=cmd_todo)
     pb = sub.add_parser("publish", help="build public/, uploading images to R2 if configured")
     pb.add_argument("--no-upload", action="store_true",
                     help="skip the R2 upload (the deploy runner uses this — it has no credentials)")
+    pb.add_argument("--prune-r2", action="store_true",
+                    help="also delete R2 objects the site no longer references")
     pb.set_defaults(func=cmd_publish)
     sub.add_parser("scrub", help="strip EXIF from thumbnails and blur tracked coordinates").set_defaults(func=cmd_scrub)
     sub.add_parser("verify", help="check nothing tracked carries precise location data").set_defaults(func=cmd_verify)

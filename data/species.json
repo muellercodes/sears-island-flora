@@ -1341,98 +1341,6 @@
   "lookalikes": []
  },
  {
-  "id": "japanese-knotweed-possible-young-shoot",
-  "common": "Japanese Knotweed (possible young shoot)",
-  "scientific": "Reynoutria japonica (cf.)",
-  "family": "Polygonaceae",
-  "kind": "herb",
-  "edibility": "edible-with-caution",
-  "summary": "Very likely a young shoot of Japanese knotweed, one of the most aggressive regulated invasives in Maine, though this single blurry seedling cannot be confirmed without seeing the stem nodes. Knotweed spreads from rhizome and stem fragments and forms dense monocultures along roadsides and riverbanks. Young spring shoots are edible and rhubarb-like, but the plant should be reported, not transplanted or composted.",
-  "parts": [
-   {
-    "part": "Young shoots under about 8 inches",
-    "use": "Food",
-    "season": "Spring only, while tender and hollow",
-    "prep": "Peel, chop, and cook like rhubarb in pies, sauces, or soups; tart from oxalic acid, so eat in moderation"
-   }
-  ],
-  "id_marks": [
-   "Leaves broadly ovate to triangular with a flat, squared-off base and an abruptly pointed tip",
-   "Leaves alternate, set in a zigzag pattern along the stem",
-   "Stem hollow and bamboo-like with swollen nodes; a thin papery sheath (ocrea) rings the stem at each node",
-   "Stems often flecked or streaked with reddish-purple when young",
-   "Mature clumps reach 6-10 ft with sprays of creamy white flowers in late summer"
-  ],
-  "cautions": [
-   "Do not dig, pull, or move soil from a knotweed patch \u2014 any rhizome or stem fragment can start a new colony",
-   "Never compost or dump cuttings; bag or dry them on pavement",
-   "High oxalic acid, so limit quantity if eating; avoid if prone to kidney stones",
-   "Plants along roadsides may have been sprayed with herbicide"
-  ],
-  "lookalikes": [
-   "Basswood or birch seedling \u2014 solid stem, no papery sheath at the nodes, leaves toothed rather than nearly entire",
-   "Giant knotweed (Reynoutria sachalinensis) \u2014 much larger leaves with a heart-shaped, not truncate, base",
-   "Bohemian knotweed (the hybrid) \u2014 intermediate leaf base; also regulated, so treat the same"
-  ],
-  "origin_status": "regulated",
-  "source": "auto (claude-opus-5)"
- },
- {
-  "id": "unidentified-mature-hardwood-bark-only",
-  "common": "Unidentified mature hardwood (bark only)",
-  "scientific": "indet. (cf. Acer rubrum / Populus sp.)",
-  "family": "unknown",
-  "kind": "tree",
-  "edibility": "unknown",
-  "summary": "A large forest hardwood photographed only at the trunk, where the bark has separated into long shaggy vertical plates typical of several mature northeastern trees. Without foliage, twigs, or fruit there is no defensible species call. Worth revisiting with a canopy or leaf-litter shot, since a confirmed hickory would be notable this far up the Maine coast.",
-  "parts": [],
-  "id_marks": [
-   "Trunk bark in long narrow vertical plates that lift free at the edges, shaggy but not fully exfoliating in curls",
-   "No horizontal lenticel bands and no smooth pale upper trunk visible in frame",
-   "Look up: opposite palmate leaves would mean red maple; alternate compound leaves with 5 leaflets would mean shagbark hickory; alternate simple toothed leaves on flattened petioles would mean aspen/poplar",
-   "Check leaf litter and any seedlings at the base for a matching leaf"
-  ],
-  "cautions": [
-   "Do not tap, cut, or peel bark for identification; wounding a mature tree for an ID is unnecessary when a leaf will do"
-  ],
-  "lookalikes": [
-   "Shagbark Hickory (Carya ovata) \u2014 bark plates are longer and curl away at both ends, and leaves are compound with 5 leaflets",
-   "Red Maple (Acer rubrum) \u2014 old trunks shed similar plates but leaves are opposite and simple",
-   "Bigtooth Aspen (Populus grandidentata) \u2014 older basal bark is dark and furrowed but the upper trunk stays smooth and greenish-gray",
-   "Black Cherry (Prunus serotina) \u2014 plates are darker, thicker and 'burnt cornflake' in shape, and inner bark smells of almond"
-  ],
-  "origin_status": "unknown",
-  "source": "auto (claude-opus-5)"
- },
- {
-  "id": "fern-unidentified-colony",
-  "common": "Fern (unidentified colony)",
-  "scientific": "Polypodiopsida sp.",
-  "family": "(indeterminate fern family)",
-  "kind": "fern",
-  "edibility": "unknown",
-  "summary": "A dense forest-floor colony of finely divided ferns growing under a hardwood canopy with maple/beech leaf litter. Ferns like these dominate the understory on Sears Island's moister interior ground. Species-level ID requires a close look at a single frond, so treat this only as a record of fern cover at this spot.",
-  "parts": [],
-  "id_marks": [
-   "Check whether the blade is cut twice (hay-scented) or fully three times with a delicate, tapering tip",
-   "Crush a frond: hay-scented fern smells strongly of cut hay or crushed almond when bruised",
-   "Look at the underside for sori \u2014 hay-scented fern has tiny cup-shaped sori at pinnule margins; lady fern has curved, J-shaped sori along the veins",
-   "Note stipe color and scaliness at the base, and whether fronds arise singly from a creeping rhizome (colonial) or in a tight vase-shaped clump"
-  ],
-  "cautions": [
-   "Do not eat unidentified fern fiddleheads; only ostrich fern (Matteuccia struthiopteris) is considered a safe edible in Maine, and many other ferns contain thiaminase or carcinogenic compounds such as ptaquiloside",
-   "Fern colonies often grow on wet, uneven ground with hidden holes and downed wood"
-  ],
-  "lookalikes": [
-   "Hay-scented fern (Dennstaedtia punctilobula) \u2014 hay smell when bruised and dense single-frond colonies from creeping rhizomes",
-   "Lady fern (Athyrium filix-femina) \u2014 clumped, vase-shaped crown with grooved stipe and J-shaped sori",
-   "New York fern (Thelypteris noveboracensis) \u2014 blade tapers to nearly nothing at BOTH ends",
-   "Bracken (Pteridium aquilinum) \u2014 coarse, three-part, nearly horizontal blade held well above the ground"
-  ],
-  "origin_status": "unknown",
-  "source": "auto (claude-opus-5)"
- },
- {
   "id": "common-milkweed",
   "common": "Common Milkweed",
   "scientific": "Asclepias syriaca",
@@ -1488,61 +1396,6 @@
  },
  {
   "id": "pixie-cup-lichen",
-  "common": "Pixie-cup Lichen",
-  "scientific": "Cladonia sp. (pyxidata/chlorophaea group)",
-  "family": "Cladoniaceae",
-  "kind": "other",
-  "edibility": "inedible",
-  "summary": "A cup lichen forming small grey-green golf-tee or trumpet shapes on mossy rotting wood, one of the most common woodland lichens in coastal Maine. Not a foraging plant \u2014 it is slow-growing and of no food value, but it is a good indicator of undisturbed, humid forest and clean air.",
-  "parts": [],
-  "id_marks": [
-   "Podetia 5-15 mm tall flaring into an open cup or goblet at the top",
-   "Pale grey-green to mint colour, dull and granular rather than glossy",
-   "Small scale-like squamules at the base of the stalks",
-   "Growing over moss on rotting wood or soil, not a rooted plant",
-   "Brittle and crisp when dry, softening and swelling when wet"
-  ],
-  "cautions": [
-   "Not food; lichens can concentrate airborne pollutants and many contain acids that irritate the gut",
-   "Extremely slow-growing \u2014 collecting damages a colony that took years to form"
-  ],
-  "lookalikes": [
-   "Cladonia coniocraea and other awl-shaped Cladonia \u2014 pointed, not cup-tipped",
-   "Cladonia cristatella (British soldiers) \u2014 same growth form but with bright red apothecia",
-   "Trumpet lichen Cladonia fimbriata \u2014 cups more regularly funnel-shaped with fine soredia; needs chemistry to separate"
-  ],
-  "origin_status": "native",
-  "source": "auto (claude-opus-5)"
- },
- {
-  "id": "trailside-moss-unidentified",
-  "common": "Trailside Moss (unidentified)",
-  "scientific": "Bryophyta sp.",
-  "family": "unknown",
-  "kind": "moss",
-  "edibility": "inedible",
-  "summary": "A mat-forming feather moss carpeting exposed tree roots and compacted soil along a footpath, with tufts of grass and leaf litter. Mosses like this are not food but are useful indicators of moisture and of trail erosion; here the exposed roots show heavy foot traffic.",
-  "parts": [],
-  "id_marks": [
-   "Low green mat growing over roots, soil and rock rather than upright tufts",
-   "Branching, feather-like shoots typical of pleurocarpous mosses",
-   "Springs back and stays green when wet; no true roots, just anchoring rhizoids",
-   "Look for stalked spore capsules in spring to narrow the genus"
-  ],
-  "cautions": [
-   "Not edible; mosses have no food value and may harbor soil bacteria",
-   "Moss mats on trails are fragile \u2014 stepping on them accelerates erosion of the exposed roots"
-  ],
-  "lookalikes": [
-   "Lichens \u2014 grey-green, crusty or leathery, not composed of tiny leafy shoots",
-   "Liverworts \u2014 flattened, ribbon-like thallus without distinct leafy stems",
-   "Young grass or clubmoss seedlings \u2014 clubmosses have stiff, wiry upright stems"
-  ],
-  "origin_status": "native",
-  "source": "auto (claude-opus-5)"
- },
- {
-  "id": "pixie-cup-lichen-trumpet-lichen",
   "common": "Pixie Cup Lichen (trumpet lichen)",
   "scientific": "Cladonia sp.",
   "family": "Cladoniaceae",
@@ -1568,32 +1421,9 @@
    "Small mushrooms \u2014 a true fungus has gills or pores under the cap; these cups are open on top with no gills"
   ],
   "origin_status": "native",
-  "source": "auto (claude-opus-5)"
- },
- {
-  "id": "mixed-moss-and-lichen-mat-tree-base",
-  "common": "Mixed Moss and Lichen Mat (tree base)",
-  "scientific": "Bryophyta sp. (with Cladonia sp. / foliose lichen)",
-  "family": "Mixed (Hypnaceae / Dicranaceae / Cladoniaceae)",
-  "kind": "moss",
-  "edibility": "inedible",
-  "summary": "A typical moist-woodland trunk-base community: several moss species in green and gold-brown tones intergrown with pale grey-green lichen. It is not a forage item, but it is a useful indicator of a shaded, humid, undisturbed forest floor. Identification to species requires close inspection of leaf shape and spore capsules.",
-  "parts": [],
-  "id_marks": [
-   "Cushions and creeping mats of green to orange-gold moss on bark and root buttress",
-   "Pale blue-grey to mint-green lichen squamules or lobes interwoven with the moss",
-   "No vascular leaves, flowers, or roots \u2014 moss shoots pull away as a loose mat",
-   "Look for slender stalked capsules (setae) in spring to narrow the moss genus"
-  ],
-  "cautions": [
-   "Mosses and lichens are not food; some lichens contain acids that irritate the gut",
-   "Mats are slow-growing \u2014 peeling them off a trunk destroys decades of growth"
-  ],
-  "lookalikes": [
-   "Reindeer lichen (Cladonia rangiferina) \u2014 grows in branching, hollow, coral-like stalks on the ground, not as a flat crust on bark",
-   "Liverworts \u2014 flattened, ribbon-like thallus lying pressed to the bark rather than leafy shoots"
-  ],
-  "origin_status": "native",
-  "source": "auto (claude-opus-5)"
+  "source": "auto (claude-opus-5)",
+  "merged_from": [
+   "pixie-cup-lichen-trumpet-lichen"
+  ]
  }
 ]
