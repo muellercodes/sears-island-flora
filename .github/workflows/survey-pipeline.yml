@@ -133,6 +133,19 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: python3 scripts/identify.py --collect
 
+      # Immediately after ingest, and on failure too. The thumbnails this run just
+      # created are the only copies anywhere: a photo is not uploaded to R2 until
+      # something in it has been identified, which happens in a LATER run. If this
+      # job then died at verify or publish, a save placed at the end would be
+      # skipped and those images would be lost with the runner — the batch would
+      # come back to a collect run with nothing to publish.
+      - name: Save working thumbnails
+        if: ${{ !cancelled() && env.MODE == 'submit' }}
+        uses: actions/cache/save@v4
+        with:
+          path: thumbs
+          key: survey-thumbs-${{ github.run_id }}
+
       # A submitted batch is money already spent and the id is the only way to
       # reach the results. Put it somewhere a person will find it even if the push
       # below fails and the database commit is lost with the runner.
@@ -196,16 +209,6 @@ jobs:
             git rebase origin/main
             git push origin HEAD:main
           }
-
-      # Only the submit run brings in new thumbnails, so only it needs to write the
-      # cache. Saving on every collect tick would store the whole directory a dozen
-      # times a day and thrash the repo's 10 GB cache budget.
-      - name: Save working thumbnails
-        if: env.MODE == 'submit'
-        uses: actions/cache/save@v4
-        with:
-          path: thumbs
-          key: survey-thumbs-${{ github.run_id }}
 
       # A push made with GITHUB_TOKEN does not trigger other workflows, by design
       # — so deploy.yml will NOT fire for the commit above. Deploy it here instead.
