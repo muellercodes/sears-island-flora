@@ -637,6 +637,7 @@ python3 scripts/plantdb.py ingest DIR --local   # ...but never commit or publish
 python3 scripts/plantdb.py invasives    # survey report by regulatory status, with locations
 python3 scripts/plantdb.py invasives --all   # include natives
 python3 scripts/plantdb.py batches      # batches submitted and not yet collected
+python3 scripts/plantdb.py export-imap  # field-verified invasives, as an iMapInvasives CSV
 python3 scripts/plantdb.py reconcile    # merge duplicate species, drop non-answers
 python3 scripts/plantdb.py verify       # data-quality check
 python3 scripts/plantdb.py publish      # build public/
@@ -658,6 +659,53 @@ Forked from a family foraging guide. Four inversions, each for a reason:
 
 Foraging notes are retained as secondary detail — they're accurate and occasionally
 useful — but they are not what this site is for.
+
+## Getting records to the state — iMapInvasives
+
+Maine tracks invasive species in **iMapInvasives**, run by NatureServe and
+coordinated here by the Maine Natural Areas Program. Maine is one of only five
+participating jurisdictions, which makes it the place an invasive record has to
+land if it is going to count with the state.
+
+```bash
+python3 scripts/plantdb.py export-imap
+```
+
+**There is no API to submit to.** The documented routes in are manual entry, the
+mobile app, and a **bulk upload tool that only a Jurisdiction Administrator can
+run**. So this writes the CSV to hand them; nothing is posted anywhere.
+
+Required columns, from NatureServe's published spec: `Source Unique ID`, `Species`,
+`Date`, `Observer`, `Latitude`, `Longitude`. Coordinates must be decimal degrees
+inside the jurisdiction, and **the Observer must already exist in iMapInvasives** or
+the upload fails.
+
+### Only field-verified records are exported, deliberately
+
+An AI identification is a lead. Putting leads into a dataset that land managers act
+on is precisely the failure this project exists to avoid, and once they are in they
+are not easily taken back.
+
+That constraint also supplies the one required field the survey does not otherwise
+collect. iMap wants an **Observer** — the person who observed the species — and for
+a field-verified record that is exactly who `verified.by` is. The standard the
+project already holds itself to produces the field the state requires.
+
+Native species are skipped too: iMapInvasives tracks invasives, and a confirmed
+goldenrod is good survey data but noise to the people receiving the file.
+
+### What this means for the pitch
+
+"A field tool that produces state-submittable records" is a stronger offer than
+"another map" — but only once someone has walked out and confirmed something. Until
+then `export-imap` correctly writes nothing, and says so.
+
+**One correction worth knowing:** feeding iNaturalist does *not* get data into
+iMapInvasives. iNat records reach iMap through a GBIF export as a **view-only
+snapshot layer**; they are "not brought directly into the iMapInvasives database"
+and "do not undergo the same review & confirmation process". Only hand-picked
+high-priority records are keyed in by staff. iNaturalist is worth using for reach
+and for FOSI's existing audience — it is not a route to a state record.
 
 ## Tests
 
