@@ -493,7 +493,13 @@
   "lat": "44.878281",
   "lon": "-68.689619",
   "batch": "orono",
-  "hash": "db9245f6c6cd919b"
+  "hash": "db9245f6c6cd919b",
+  "verified": {
+   "status": "revisit",
+   "by": "A. Mueller",
+   "date": "2026-08-02",
+   "notes": "Need a flower to be sure."
+  }
  },
  {
   "id": "D7A511FE-0113-494A-A638-A750DA9450DA",

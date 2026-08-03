@@ -19,3 +19,4 @@ public/
 logs/*.log
 .env
 data/rejected/
+.drive-inbox/

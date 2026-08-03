@@ -86,6 +86,35 @@ outright without ever colliding with the pipeline, because no field has two writ
 Unverified records are marked as such everywhere they appear, and their map pins are
 drawn with an open, dashed ring — the ring is the claim, and it is not closed yet.
 
+## Photos from a shared Drive folder
+
+Contributors drop photos in a shared Google Drive folder; the pipeline reads that
+folder and nothing else. This uses the same service account as the review sheet, so
+there is no desktop app and no local mirror — and it runs headlessly, which matters
+the day this moves off a laptop.
+
+**Enable the Drive API** for the project (separate from Sheets):
+<https://console.cloud.google.com/apis/library/drive.googleapis.com>
+
+Share the folder with the service account's `client_email`, then find its id:
+
+```bash
+python3 scripts/plantdb.py drive-folders     # lists what the service account can see
+```
+
+Put it in `.env` as `GOOGLE_DRIVE_FOLDER_ID`, then:
+
+```bash
+python3 scripts/plantdb.py ingest-drive --limit 5    # try a few first
+python3 scripts/plantdb.py ingest-drive              # the rest
+```
+
+Only images directly in the folder are read — subfolders are not walked, because a
+flat drop-box is easier for contributors to get right. Downloaded Drive file ids are
+remembered so bytes are never re-fetched; that is separate from the content-hash
+dedupe, which stops the same photo being added twice even under a new name. A file id
+is recorded only after the bytes are on disk, so a failed download retries next run.
+
 ## Steward review in a Google Sheet
 
 Field verification does not need a developer. A shared sheet gives the Friends of

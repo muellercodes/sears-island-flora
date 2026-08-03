@@ -840,6 +840,84 @@ def _sheets():
     return sheets, cfg
 
 
+def _drive():
+    require("googleapiclient", "google-api-python-client google-auth")
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+    import drive
+    cfg = drive.config()
+    if not cfg:
+        sys.exit("Drive not configured. Missing: " + ", ".join(drive.missing_vars()))
+    return drive, cfg
+
+
+def cmd_drive_folders(args):
+    """List folders the service account can see — this is how you find the folder id."""
+    drive, cfg = _drive()
+    svc = drive.service(cfg)
+    folders = drive.shared_folders(svc)
+    if not folders:
+        print("No folders shared with the service account yet.")
+        print("Share the photo folder with the address in your service-account JSON")
+        print("(the `client_email` field), as Viewer or better.")
+        return
+    print(f"{len(folders)} folder(s) visible to the service account:\n")
+    for f in folders:
+        owner = (f.get("owners") or [{}])[0].get("emailAddress", "?")
+        mark = "  <- GOOGLE_DRIVE_FOLDER_ID" if f["id"] == cfg["folder_id"] else ""
+        print(f"  {f['name']}")
+        print(f"    id: {f['id']}   owner: {owner}{mark}")
+    if not cfg["folder_id"]:
+        print("\nSet GOOGLE_DRIVE_FOLDER_ID in .env to the id you want to watch.")
+
+
+def cmd_ingest_drive(args):
+    """Fetch new photos from the shared Drive folder, then ingest them normally."""
+    drive, cfg = _drive()
+    if not cfg["folder_id"]:
+        sys.exit("Set GOOGLE_DRIVE_FOLDER_ID in .env. To find it: plantdb.py drive-folders")
+    svc = drive.service(cfg)
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+    import idcache
+    con = idcache.connect()
+    seen = idcache.drive_seen(con)
+
+    files = drive.list_images(svc, cfg["folder_id"])
+    new = [f for f in files if f["id"] not in seen]
+    print(f"{len(files)} image(s) in the folder, {len(new)} not yet fetched.")
+    if args.limit:
+        new = new[: args.limit]
+    if not new:
+        return
+
+    staging = ROOT / ".drive-inbox"
+    if staging.exists():
+        shutil.rmtree(staging)
+    staging.mkdir()
+    got = 0
+    for f in new:
+        dest = staging / f["name"]
+        n = 1
+        while dest.exists():                      # Drive allows duplicate names
+            dest = staging / f"{pathlib.Path(f['name']).stem}-{n}{pathlib.Path(f['name']).suffix}"
+            n += 1
+        try:
+            drive.download(svc, f["id"], dest)
+        except Exception as e:
+            print(f"  ! {f['name']}: download failed — {e}")
+            continue
+        # Recorded only after the bytes are on disk, so a failed download is retried
+        # on the next run rather than silently skipped forever.
+        idcache.drive_record(con, f["id"], f["name"])
+        got += 1
+        print(f"  + {f['name']}")
+    print(f"\nDownloaded {got} file(s) to {staging.name}/")
+    if got:
+        args.folder = str(staging)
+        args.batch = args.batch or datetime.date.today().isoformat()
+        cmd_ingest(args)
+    shutil.rmtree(staging, ignore_errors=True)
+
+
 def cmd_sheet_push(args):
     """Send the machine columns to the sheet. Never touches the human columns."""
     sheets, cfg = _sheets()
@@ -1205,6 +1283,14 @@ if __name__ == "__main__":
     uv.add_argument("--status", help="only this regulatory status (e.g. regulated)")
     uv.add_argument("--limit", type=int)
     uv.set_defaults(func=cmd_unverified)
+    sub.add_parser("drive-folders", help="list Drive folders the service account can see")\
+       .set_defaults(func=cmd_drive_folders)
+    dr = sub.add_parser("ingest-drive", help="fetch new photos from the shared Drive folder")
+    dr.add_argument("--batch", help="label for this group (defaults to today)")
+    dr.add_argument("--local", action="store_true",
+                    help="keep these records out of git and off the published site")
+    dr.add_argument("--limit", type=int, help="only fetch this many (good for a first run)")
+    dr.set_defaults(func=cmd_ingest_drive)
     sp_ = sub.add_parser("sheet-push", help="send records to the steward review sheet")
     sp_.set_defaults(func=cmd_sheet_push)
     pl = sub.add_parser("sheet-pull", help="read steward verifications back from the sheet")

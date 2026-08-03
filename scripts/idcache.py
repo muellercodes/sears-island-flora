@@ -37,6 +37,14 @@ CREATE INDEX IF NOT EXISTS idx_identified_at ON identifications(identified_at);
 -- Submitted batches, so an interrupted poll can be resumed instead of resubmitted.
 -- A batch can take up to 24 hours; losing the id would mean paying for it twice
 -- and never collecting the first run's results.
+-- Drive file ids already fetched. Separate from the photo content hash: the hash
+-- stops the same picture being added twice, this stops us re-downloading bytes.
+CREATE TABLE IF NOT EXISTS drive_files (
+    file_id       TEXT PRIMARY KEY,
+    name          TEXT,
+    downloaded_at TEXT
+);
+
 CREATE TABLE IF NOT EXISTS batches (
     batch_id   TEXT PRIMARY KEY,
     created_at TEXT,
@@ -113,4 +121,14 @@ def open_batches(con):
 
 def mark_collected(con, batch_id):
     con.execute("UPDATE batches SET collected = 1 WHERE batch_id = ?", (batch_id,))
+    con.commit()
+
+
+def drive_seen(con):
+    return {r[0] for r in con.execute("SELECT file_id FROM drive_files")}
+
+
+def drive_record(con, file_id, name):
+    con.execute("INSERT OR REPLACE INTO drive_files (file_id, name, downloaded_at) VALUES (?,?,?)",
+                (file_id, name, datetime.datetime.now().isoformat(timespec="seconds")))
     con.commit()
