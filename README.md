@@ -134,6 +134,39 @@ writer:
 |---|---|---|
 | file, photo, photographed, latitude, longitude, AI identification, AI confidence, AI notes | pipeline | push → sheet |
 | STATUS, corrected species, verified by, verified date, field notes | **a person** | sheet → pull |
+| recorded? | pipeline | push → sheet |
+
+### Telling a steward whether their row landed
+
+`recorded?` is the last column and closes the loop. A refused verification otherwise
+exists only as a line in a CI log nobody opens, and the person who walked out there
+is left believing it was recorded.
+
+| It says | It means |
+|---|---|
+| *(blank)* | nothing entered yet |
+| `✓ recorded 2026-08-02` | it is in the survey |
+| `… will be recorded on the next sync` | valid, entered since the last pull |
+| `⚠ not recorded — needs a name in 'verified by'` | refused, with the reason. Fix the row and it syncs next run. |
+
+The rule that decides this is the same function the pull uses to decide what to
+apply (`verification_problem`), so the sheet can never tell someone their row is
+fine while the pipeline drops it.
+
+Two more things make the sheet usable by someone who has never read this file:
+
+- **A `Species` tab**, pushed with the records, listing every id with its common and
+  scientific name. `corrected species` takes an *id* — `japanese-knotweed`, not
+  "Japanese knotweed" — which nobody can be expected to guess, and a mistyped id is
+  the likeliest reason a real field check gets refused. It is now a dropdown you
+  pick from.
+- **Notes on every header cell** explaining what the column is for and what each
+  STATUS value means.
+
+Both dropdowns are deliberately **non-strict**: strict validation blocks pasting a
+column of values, which is exactly what a steward does after a day in the field. A
+bad value is caught by the sync and explained in `recorded?` — guarded without being
+obstructive.
 
 No field has two writers, so there is no merge and nothing to resolve. A steward can
 be editing while a batch run identifies new photos, and neither clobbers the other.

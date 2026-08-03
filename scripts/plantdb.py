@@ -1014,6 +1014,29 @@ def cmd_ingest_drive(args):
     shutil.rmtree(staging, ignore_errors=True)
 
 
+def verification_problem(v, species_ids):
+    """Why these human columns are not an acceptable verification, or None.
+
+    One definition, used by both directions: the pull decides what to apply with it,
+    and the push writes the reason back into the sheet's "recorded?" column with it.
+    If those two ever disagreed, the sheet would tell a steward their row was fine
+    while the pipeline quietly dropped it — which is the failure this whole column
+    exists to prevent.
+    """
+    status = (v.get("status") or "").strip()
+    if not status:
+        return None                     # blank is "not reviewed", not an error
+    if status not in VERIFY_STATUS:
+        return f"status '{status}' is not one of {', '.join(VERIFY_STATUS)}"
+    if status == "corrected" and not v.get("species_id"):
+        return "'corrected' needs an id in 'corrected species'"
+    if v.get("species_id") and v["species_id"] not in species_ids:
+        return f"unknown species id '{v['species_id']}' — pick one from the Species tab"
+    if not v.get("by"):
+        return "needs a name in 'verified by' — an unattributed verification is not one"
+    return None
+
+
 def cmd_sheet_push(args):
     """Send the machine columns to the sheet. Never touches the human columns."""
     sheets, cfg = _sheets()
@@ -1031,8 +1054,32 @@ def cmd_sheet_push(args):
     # Read the human columns first and write them straight back, so a push can never
     # blank a steward's work — even one made between this read and the write.
     existing = sheets.pull(svc, cfg)
-    n = sheets.push(svc, cfg, obs, species, base, existing)
-    print(f"Pushed {n} record(s) to the sheet.")
+
+    # Tell each steward whether their row actually landed. A refused verification
+    # otherwise only exists as a line in a CI log nobody opens, and the person who
+    # walked out there is left believing it was recorded.
+    ids = set(species)
+    feedback, refused = {}, 0
+    for o in obs:
+        v = existing.get(o["file"], {})
+        problem = verification_problem(v, ids)
+        if problem:
+            feedback[o["file"]] = f"⚠ not recorded — {problem}"
+            refused += 1
+        elif not (v.get("status") or "").strip():
+            feedback[o["file"]] = ""
+        elif o.get("verified"):
+            feedback[o["file"]] = f"✓ recorded {o['verified'].get('date', '')}".strip()
+        else:
+            feedback[o["file"]] = "… will be recorded on the next sync"
+
+    n_sp = sheets.push_species(svc, cfg, list(species.values()))
+    n = sheets.push(svc, cfg, obs, species, base, existing, feedback)
+    print(f"Pushed {n} record(s) to the sheet, and {n_sp} species to the "
+          f"'{sheets.SPECIES_TAB}' tab for the corrected-species dropdown.")
+    if refused:
+        print(f"  ! {refused} row(s) have a verification the sync cannot accept. "
+              f"The reason is now in each row's 'recorded?' column.")
     print(f"  https://docs.google.com/spreadsheets/d/{cfg['sheet_id']}/edit")
     if not base:
         print("  (no r2_public_base set — the photo column will be empty)")
@@ -1058,18 +1105,10 @@ def cmd_sheet_pull(args):
             if cur:
                 changes.append((o, None, f"clear verification (was {cur.get('status')})"))
             continue
-        if v["status"] not in VERIFY_STATUS:
-            problems.append(f"{f}: status '{v['status']}' is not one of {', '.join(VERIFY_STATUS)}")
-            continue
-        if v["status"] == "corrected" and not v["species_id"]:
-            problems.append(f"{f}: 'corrected' needs a corrected species id")
-            continue
-        if v["species_id"] and v["species_id"] not in ids:
-            problems.append(f"{f}: unknown species id '{v['species_id']}'")
-            continue
-        if not v["by"]:
-            problems.append(f"{f}: needs a name in 'verified by' — an unattributed "
-                            f"verification is not a verification")
+        # Same rules the push writes into the sheet's "recorded?" column, so a
+        # steward is never told their row is fine while this quietly drops it.
+        if (problem := verification_problem(v, ids)):
+            problems.append(f"{f}: {problem}")
             continue
         new = {"status": v["status"], "by": v["by"],
                "date": v["date"] or datetime.date.today().isoformat()}
