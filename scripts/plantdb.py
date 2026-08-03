@@ -1331,11 +1331,29 @@ def cmd_batches(args):
         print("No batches awaiting collection.")
         return
     print(f"{len(opens)} batch(es) submitted and not yet collected:\n")
+    stale = 0
     for bid, created, n, model, region in opens:
+        age = ""
+        try:
+            hours = (datetime.datetime.now()
+                     - datetime.datetime.fromisoformat(created)).total_seconds() / 3600
+            age = f", {hours:.0f}h ago"
+            # The API caps a batch at 24 hours, so anything older is not still
+            # running — it ended and was never collected, or it will never end.
+            # Left unsaid, it sits here being polled every couple of hours forever.
+            if hours > 30:
+                age += "  ** older than the 24h limit — collect or investigate **"
+                stale += 1
+        except (TypeError, ValueError):
+            pass
         print(f"  {bid}")
-        print(f"      {n} photo(s), {model}, submitted {created}")
+        print(f"      {n} photo(s), {model}, submitted {created}{age}")
     print("\nCollect them with:  .venv/bin/python scripts/identify.py --collect")
     print("A batch may take up to 24 hours; results are kept for 29 days.")
+    if stale:
+        print(f"\n{stale} batch(es) are past the point where they could still be running.")
+        print("If --collect reports them as still processing, they are stuck: cancel them")
+        print("in the console, and the photos become eligible again on the next run.")
 
 
 def cmd_doctor(args):
@@ -1612,9 +1630,15 @@ def non_answer_reason(sp):
     a scientific name that is not a genus. They agree on every case seen so far,
     which is the point — one of them catches a naming style the other misses.
     """
-    common = norm_common(sp.get("common"))
+    # Hedge words are looked for in the WHOLE name, parentheticals included —
+    # unlike norm_common, which drops them so that "Pixie-cup Lichen" and "Pixie
+    # Cup Lichen (trumpet lichen)" compare equal for merging. The qualifier is
+    # exactly where the hedging lives: "Fern (unidentified colony)" with a real
+    # genus in `scientific` would otherwise pass both tests and be written to the
+    # catalogue under a name that invites the next photo to match it.
+    whole = " ".join(re.sub(r"[^a-z0-9]+", " ", (sp.get("common") or "").lower()).split())
     for w in HEDGE_WORDS:
-        if re.search(rf"\b{w}", common):
+        if re.search(rf"\b{w}", whole):
             return f'"{w}" in the name — a description of the photo, not a taxon'
     sci = norm_sci(sp.get("scientific"))
     if not sci:

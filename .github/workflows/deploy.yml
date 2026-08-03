@@ -22,6 +22,11 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      # Also runs on its own workflow for pull requests. Repeated here so a broken
+      # rule cannot reach the published site even if something lands on main
+      # without a PR — the pipeline commits straight to main every night.
+      - name: Tests
+        run: python3 -m unittest discover -s tests -t .
       - name: Privacy check (fails the build if EXIF or precise GPS is present)
         run: python3 scripts/plantdb.py verify
       - name: Build public/
