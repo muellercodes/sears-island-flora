@@ -1487,6 +1487,13 @@ def cmd_remove(args):
     drop = {o["file"] for o in sel}
     save_obs([o for o in obs if o["file"] not in drop])
     save(R2_MANIFEST, manifest)
+    # The location sidecar is written at ingest and never read, so an entry left
+    # behind here is invisible — but the file is tracked, so orphans accumulate in
+    # git for the life of the project. Removing a record removes everything the
+    # record put anywhere.
+    private = load(PRIVATE_F, {})
+    if any(f in private for f in drop):
+        save(PRIVATE_F, {k: v for k, v in private.items() if k not in drop})
     cmd_build(args)
     print(f"\nRemoved {len(sel)} record(s); {gone} object(s) deleted from R2.")
     print("Run `publish` and push to update the site.")
