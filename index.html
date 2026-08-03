@@ -120,6 +120,16 @@
   .sheet-head { position:sticky; top:0; background:var(--panel); border-bottom:1px solid var(--line);
     padding:20px 24px 16px; display:flex; justify-content:space-between; gap:16px; align-items:flex-start; z-index:2; }
   .sheet-head h2 { margin:0 0 3px; font-size:22px; letter-spacing:-.01em; }
+  /* A species named inside another species' sheet is a way through to it. Styled as
+     a link rather than a button so it reads as "there is more here", not "act". */
+  .xlink { border:0; background:none; padding:0; margin:0; font:inherit; color:var(--accent);
+    text-decoration:underline; text-underline-offset:2px; cursor:pointer; }
+  .xlink:hover { text-decoration-thickness:2px; }
+  .xlink:focus-visible { outline:2px solid var(--accent); outline-offset:2px; border-radius:3px; }
+  .sheet-back { display:inline-flex; align-items:center; gap:5px; margin:0 0 6px;
+    font-size:12.5px; color:var(--muted); border:0; background:none; padding:0;
+    cursor:pointer; font-family:inherit; }
+  .sheet-back:hover { color:var(--accent); }
   .sheet-head .sci { font-style:italic; color:var(--muted); font-size:14px; }
   .sheet-head .fam { color:var(--muted); font-size:12.5px; margin-top:4px; }
   .x { border:0; background:var(--line); color:var(--ink); width:32px; height:32px; border-radius:50%;
@@ -713,16 +723,27 @@ function pinList(gid) { setPopup(listHTML(gid, PIN[gid] || [])); }
 // ---- detail sheet --------------------------------------------------------
 // Photo tiles. `secondary` = this species is visible in the shot but isn't its subject,
 // so we label what the photo was actually filed under.
+// A species named inside another species' sheet — the photo's main subject, or
+// something else caught in the frame. Both are entries in their own right, so both
+// are a way through to them.
+const speciesLink = id => SP[id]
+  ? `<button class="xlink" data-id="${esc(id)}" onclick="openSheet(this.dataset.id)">${esc(SP[id].common)}</button>`
+  : esc(id);
+
 function shotGrid(list, s, secondary = false) {
   return `<div class="shots">${list.map(o => {
     const subject = SP[o.species_id];
+    // Everything else identified in this frame, minus whoever's sheet we are on.
+    const others = (o.also || []).filter(x => x !== s.id && x !== o.species_id && SP[x]);
     return `<figure class="shot" style="margin:0">
       <img loading="lazy" src="${esc(thumbSrc(o))}" data-full="${esc(thumbSrc(o))}" alt="${esc(s.common)}">
       <figcaption class="cap">
         ${secondary
-          ? `<span class="conf" style="color:var(--muted)">filed under ${esc(subject ? subject.common : o.species_id)}</span><br>`
+          ? `<span class="conf" style="color:var(--muted)">filed under ${speciesLink(o.species_id)}</span><br>`
           : `<span class="conf conf-${o.confidence}">${esc(o.confidence)} confidence</span><br>`}
         ${esc(o.note || "")}
+        ${others.length ? `<div style="margin-top:6px">Also in this photo: ${
+          others.map(speciesLink).join(", ")}</div>` : ""}
         <div style="margin-top:6px;opacity:.75">${esc((o.taken || "").slice(0, 16))}${o.lat ? ` · ${esc(o.lat)}, ${esc(o.lon)}` : ""}</div>
         ${o.identified ? `<div style="margin-top:3px;opacity:.6">Identified ${esc(o.identified)}</div>` : ""}
         <div style="margin-top:6px">${vBadge(o)}</div>
@@ -733,8 +754,25 @@ function shotGrid(list, s, secondary = false) {
   }).join("")}</div>`;
 }
 
-function openSheet(id) {
+// Following a link from one species sheet to another leaves you somewhere you did
+// not navigate to from the list, so keep the way you came. Cleared when the sheet
+// closes — by the X, by clicking the backdrop, or by Escape, which all fire `close`.
+let sheetTrail = [], sheetNow = null;
+
+function sheetBack() {
+  const prev = sheetTrail.pop();
+  if (prev) openSheet(prev, true);
+}
+
+function openSheet(id, isBack = false) {
   const s = SP[id]; if (!s) return;
+  // Arriving from the list or the map is a fresh start, so the trail resets HERE
+  // rather than on the dialog's `close` event — that event fires asynchronously,
+  // and a close followed by an open in the same tick would still show the old
+  // breadcrumb pointing at a sheet you are no longer coming from.
+  if (!$("sheet").open) { sheetTrail = []; sheetNow = null; }
+  else if (!isBack && sheetNow && sheetNow !== id) sheetTrail.push(sheetNow);
+  sheetNow = id;
   const shots = byS[id] || [];
   const also = alsoS[id] || [];
   const e = badgeOf(s);
@@ -751,6 +789,8 @@ function openSheet(id) {
   $("sheet-content").innerHTML = `
     <div class="sheet-head">
       <div>
+        ${sheetTrail.length ? `<button class="sheet-back" onclick="sheetBack()">←
+           Back to ${esc((SP[sheetTrail[sheetTrail.length - 1]] || {}).common || "")}</button>` : ""}
         <h2>${esc(s.common)}</h2>
         <div class="sci">${esc(s.scientific)}</div>
         <div class="fam">${esc(s.family)} · ${esc(s.kind)} · ${shots.length} photo${shots.length === 1 ? "" : "s"}${
@@ -783,7 +823,9 @@ function openSheet(id) {
          rule out.</p>`) : ""}
     </div>`;
 
-  $("sheet").showModal();
+  // showModal() throws InvalidStateError on a dialog that is already open, which is
+  // exactly what following a link from inside the sheet does.
+  if (!$("sheet").open) $("sheet").showModal();
   $("sheet").scrollTop = 0; $("sheet-content").scrollTop = 0;
   $("closeX").onclick = () => $("sheet").close();
   $("sheet-content").querySelectorAll(".shot img").forEach(img => img.onclick = () => {
@@ -791,6 +833,7 @@ function openSheet(id) {
   });
 }
 $("sheet").onclick = e => { if (e.target === $("sheet")) $("sheet").close(); };
+$("sheet").addEventListener("close", () => { sheetTrail = []; sheetNow = null; });
 $("lightbox").onclick = () => $("lightbox").close();
 
 // ---- boot ----------------------------------------------------------------
