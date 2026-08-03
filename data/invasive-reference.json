@@ -1,6 +1,6 @@
 {
  "_about": "Reference list for flagging non-native and regulated plants in Maine. `watchlist` is what a survey should actively hunt for; `classification` is the status of species already in this guide.",
- "_source": "Compiled from Maine DACF's Do Not Sell list (Rule Chapter 192) and Advisory List. Checked against the published page on 2026-08-03, which carries additions effective 1/1/2024. Two entries below are NOT confirmed against that page and are left flagged deliberately — see _unconfirmed. VERIFY against the current published list, and against the printable PDF the page links, before reporting anything to an agency.",
+ "_source": "Maine DACF Do Not Sell list and Watch List. Every status here was checked on 2026-08-03 against the official handout (horticulture/documents/InvasivePlantListHandoutUpdated2024.pdf), which carries the additions effective 1/1/2024. Two watchlist entries were corrected from regulated to invasive as a result. Recheck before reporting to an agency — the rule is reviewed every 5 years and this is still a working copy, not the rule.",
  "_source_url": "https://www.maine.gov/dacf/php/horticulture/invasiveplants.shtml",
  "_status_values": {
   "native": "Indigenous to Maine.",
@@ -27,8 +27,8 @@
   {
    "scientific": "Vincetoxicum nigrum",
    "common": "Black swallow-wort",
-   "status": "regulated",
-   "why": "Serious problem on Maine's coastal islands. Monarchs lay eggs on it and the larvae die.",
+   "status": "invasive",
+   "why": "Black swallow-wort is a serious invasive and worth hunting on the island — it smothers ground layer and traps monarch eggs on a plant the larvae cannot eat — but it is NOT on Maine's Do Not Sell list (verified against the 2024 handout, 2026-08-03). Report it as invasive, not as a regulated violation. Serious problem on Maine's coastal islands. Monarchs lay eggs on it and the larvae die.",
    "look_for": "Twining vine, opposite glossy leaves, tiny dark purple star-shaped flowers, milkweed-like pods."
   },
   {
@@ -104,8 +104,8 @@
   {
    "scientific": "Rhamnus cathartica",
    "common": "Common buckthorn",
-   "status": "regulated",
-   "why": "Same impacts as glossy buckthorn, drier sites.",
+   "status": "invasive",
+   "why": "Common buckthorn is invasive but NOT on Maine's Do Not Sell list — only Frangula alnus, glossy buckthorn, is listed (verified against the 2024 handout, 2026-08-03). Both are worth recording; only one is a regulatory matter. Same impacts as glossy buckthorn, drier sites.",
    "look_for": "Sub-opposite toothed leaves with curving veins, twigs often ending in a short thorn."
   },
   {
@@ -182,7 +182,7 @@
   },
   "wild-rose": {
    "status": "unknown",
-   "note": "PRIORITY RECHECK — if this is Rosa multiflora it is regulated. Check for fringed comb-like stipules at the leaf base."
+   "note": "PRIORITY RECHECK — if this is Rosa multiflora it is on the Do Not Sell list (fringed comb-like stipules at the leaf base). If it is Rosa rugosa, the beach rose all over the Maine coast, it is an 'Invasive Terrestrial Plant Species of Special Concern': still legal to sell with signage, so invasive but not prohibited. Thick crinkled leaves and fat tomato-like hips."
   },
   "rubus": {
    "status": "unknown",
@@ -263,15 +263,5 @@
    "status": "native",
    "note": "Native and under threat — emerald ash borer is in Maine. Ash locations are worth recording for monitoring."
   }
- },
- "_unconfirmed": [
-  {
-   "scientific": "Vincetoxicum nigrum",
-   "note": "Marked regulated here; did not appear in the 2026-08-03 reading of the DACF page. Left as regulated on purpose — over-flagging a genuine invasive costs a walk, under-flagging misses an infestation. Confirm against the printable PDF."
-  },
-  {
-   "scientific": "Rhamnus cathartica",
-   "note": "Same. The page lists Frangula alnus (glossy buckthorn) but common buckthorn was not seen. Confirm before relying on the status."
-  }
- ]
+ }
 }
