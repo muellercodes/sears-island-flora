@@ -3,10 +3,6 @@
  "r2_public_base": "https://pub-f75027cb6c72486eab43e77b500919ca.r2.dev",
  "r2_prefix": "thumbs",
  "r2_bucket": "sears-island-flora",
- "notice": {
-  "title": "Proof of concept — not Sears Island data",
-  "body": "These records were photographed in Orono, not on Sears Island. They are here to demonstrate that the pipeline works end to end while the island survey gets under way, and will be removed once real island photographs replace them. Nothing on this page yet describes what grows on Sears Island."
- },
  "survey_area": {
   "name": "Sears Island",
   "_comment": "Approximate bounding box covering the island, its causeway and immediate shoreline — deliberately generous, so widen or tighten as you learn the ground. enforce: 'auto' means the check stays advisory until the first in-area record arrives, then becomes binding.",
