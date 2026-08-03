@@ -147,6 +147,15 @@ def push(svc, cfg, obs, species, image_base, verified_by_file):
         valueInputOption="USER_ENTERED",
         body={"values": [HEADERS] + rows}).execute()
 
+    # An update only overwrites the range it writes, so a survey that SHRINKS —
+    # records removed, a stand-in batch retired — leaves the old rows sitting
+    # underneath the new ones. They look exactly like live records to a steward,
+    # who would then spend a walk verifying something that no longer exists. Clear
+    # everything below the last row we just wrote.
+    svc.spreadsheets().values().clear(
+        spreadsheetId=cfg["sheet_id"],
+        range=f"{SHEET_NAME}!A{len(rows) + 2}:{last}").execute()
+
     n = len(rows) + 1
     requests = [
         # Freeze the header, and the file column so a wide sheet stays readable.

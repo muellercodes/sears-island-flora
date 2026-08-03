@@ -212,3 +212,14 @@ jobs:
       - id: deployment
         uses: actions/deploy-pages@v4
         if: steps.changed.outputs.yes == 'true'
+
+      # Last, so the sheet reflects what is actually published rather than what
+      # this run hoped to publish. Without this the bridge is one-way: the pipeline
+      # would read steward verifications forever and never put a new record in
+      # front of anyone to verify.
+      - name: Put new records in front of the stewards
+        if: steps.changed.outputs.yes == 'true'
+        continue-on-error: true
+        env:
+          GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
+        run: python3 scripts/plantdb.py sheet-push

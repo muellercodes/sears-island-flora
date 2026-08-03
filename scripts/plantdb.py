@@ -1013,7 +1013,12 @@ def cmd_sheet_push(args):
     """Send the machine columns to the sheet. Never touches the human columns."""
     sheets, cfg = _sheets()
     svc = sheets.service(cfg)
-    obs = load_obs()
+    # Everything except what the screener threw out. Unidentified photos DO go to
+    # the sheet — a steward who knows the flora can name one, and `corrected` is
+    # exactly the route back for a record the pipeline gave up on. A screened-out
+    # photo is different: it is not vegetation, so there is nothing to review, and
+    # a verdict on it could not change anything (it stays withheld either way).
+    obs = [o for o in load_obs() if not o.get("rejected")]
     species = {s["id"]: s for s in enriched_species()}
     base = (load(PUBCFG_F, {}).get("r2_public_base") or "").rstrip("/")
     if base:
