@@ -1,0 +1,214 @@
+name: Survey pipeline
+
+# What autopilot.sh does on a laptop, on a schedule that runs whether or not the
+# laptop is awake — and split in two, because identification is done through the
+# Batch API at half price and batch results come back over hours, not seconds.
+#
+#   submit  (nightly)      pull verifications, ingest new photos, submit a batch
+#   collect (every 2h)     apply any batch that has finished, publish, deploy
+#
+# One file rather than two so the shared half — setup, verify, publish, commit,
+# deploy — cannot drift between them.
+#
+# This workflow holds credentials. deploy.yml deliberately does not, and is left
+# that way: it only rebuilds HTML from committed JSON, so the property that a
+# plain push never touches a key stays true and stays visible.
+
+on:
+  schedule:
+    # Submit at night so the batch has the small hours to finish. Note the Batch
+    # API discount is a flat 50%, not time-of-day pricing — running at 2am buys
+    # slack for the results to land, not a better rate.
+    - cron: "23 7 * * *"     # 07:23 UTC ≈ 2:23am ET
+    # Collect on the even hours. Cheap: with no open batch this is one SQLite read
+    # and no API call at all.
+    - cron: "53 */2 * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "submit (ingest + send a batch) or collect (apply finished batches)"
+        type: choice
+        options: [collect, submit]
+        default: collect
+
+permissions:
+  contents: write      # commits identifications and pushes them back
+  pages: write
+  id-token: write
+
+concurrency:
+  # Shared across BOTH schedules on purpose — a collect run and a submit run
+  # writing data/ at once would race, and the loser's identifications are already
+  # paid for. Queue rather than cancel: a run midway through has money on the table.
+  group: survey-pipeline
+  cancel-in-progress: false
+
+env:
+  MODE: >-
+    ${{ github.event.inputs.mode
+        || (github.event.schedule == '23 7 * * *' && 'submit' || 'collect') }}
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install --quiet anthropic google-api-python-client google-auth google-auth-httplib2
+
+      # No image ever enters git — thumbs/ is gitignored and published images are
+      # served from R2. But a photo's thumbnail has to survive from the run that
+      # ingested it to the run that collects its identification, because that is
+      # when it first becomes publishable and gets uploaded. This carries it.
+      #
+      # If this cache is ever lost, publish REFUSES to ship rather than emitting a
+      # page of broken images: data/r2-manifest.json is committed, so it can tell
+      # "already on R2" from "exists nowhere". See the README.
+      - name: Restore working thumbnails
+        uses: actions/cache/restore@v4
+        with:
+          path: thumbs
+          key: survey-thumbs-${{ github.run_id }}
+          restore-keys: survey-thumbs-
+
+      # $RUNNER_TEMP is outside the checkout, so the key cannot be caught by
+      # `git add -A` further down however the working tree ends up.
+      - name: Write the service-account key
+        env:
+          SA_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          printf '%s' "$SA_JSON" > "$RUNNER_TEMP/service-account.json"
+          echo "GOOGLE_SERVICE_ACCOUNT_JSON=$RUNNER_TEMP/service-account.json" >> "$GITHUB_ENV"
+
+      # Every tick, in both modes. Steward verifications arrive independently of
+      # new photos, and someone who spends a quiet Tuesday confirming records
+      # should not have that work sit unpublished until a photo happens to show
+      # up. A failure here is a warning, not a reason to drop the rest of the run.
+      - name: Take in steward verifications
+        continue-on-error: true
+        env:
+          GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
+        run: python3 scripts/plantdb.py sheet-pull --yes
+
+      - name: Ingest new photos from the shared Drive folder
+        if: env.MODE == 'submit'
+        env:
+          GOOGLE_DRIVE_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
+        run: python3 scripts/plantdb.py ingest-drive
+
+      # --no-wait: submit and leave. Waiting would hold a runner for up to 24h and
+      # a cancelled wait is exactly how a batch gets lost. The batch id goes into
+      # data/identifications.db, which is committed below — that commit is what
+      # makes the results recoverable.
+      - name: Submit a batch for identification
+        if: env.MODE == 'submit'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: python3 scripts/identify.py --batch --no-wait
+
+      # Applies any batch that has ended, then reconciles the catalogue — merging
+      # the near-duplicates a batch cannot avoid creating, since every request in
+      # it was built before the others existed. Exits cleanly when nothing is open.
+      - name: Collect finished batches
+        if: env.MODE == 'collect'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: python3 scripts/identify.py --collect
+
+      # A submitted batch is money already spent and the id is the only way to
+      # reach the results. Put it somewhere a person will find it even if the push
+      # below fails and the database commit is lost with the runner.
+      - name: Record what is outstanding
+        if: always()
+        run: |
+          {
+            echo "### Batches"
+            echo '```'
+            python3 scripts/plantdb.py batches
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Both new photos and pulled verifications write to tracked files, so the
+      # working tree is the honest test of whether this tick did anything.
+      - name: Did anything change?
+        id: changed
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "yes=true" >> "$GITHUB_OUTPUT"
+            git status --short
+          else
+            echo "yes=false" >> "$GITHUB_OUTPUT"
+            echo "Nothing changed this tick."
+          fi
+
+      # Coordinate precision, EXIF, and whether records fall inside the survey
+      # area. Before publish, so a bad batch fails the run instead of the site.
+      - name: Verify
+        if: steps.changed.outputs.yes == 'true'
+        run: python3 scripts/plantdb.py verify
+
+      # Must not be skipped on failure: identification has already been paid for
+      # and written to data/, so committing after a failed publish would push
+      # records whose images never reached R2 — a site full of broken photos.
+      - name: Publish
+        if: steps.changed.outputs.yes == 'true'
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+        run: python3 scripts/plantdb.py publish
+
+      - name: Commit and push
+        if: steps.changed.outputs.yes == 'true'
+        run: |
+          set -euo pipefail
+          git config user.name  "sears-island-pipeline[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Survey pipeline ($MODE): $(date -u '+%Y-%m-%d %H:%M UTC')"
+          # A push can only be rejected here if a person pushed while this ran.
+          # Rebasing this run's own unpushed commit onto that is not rewriting
+          # shared history — nothing has been published yet. If it conflicts, fail
+          # loudly rather than guess: this commit carries the batch ids and the
+          # identification cache, and the summary above has the ids for recovery.
+          git push origin HEAD:main || {
+            echo "Push rejected — someone pushed while this ran. Rebasing and retrying."
+            git fetch origin main
+            git rebase origin/main
+            git push origin HEAD:main
+          }
+
+      # Only the submit run brings in new thumbnails, so only it needs to write the
+      # cache. Saving on every collect tick would store the whole directory a dozen
+      # times a day and thrash the repo's 10 GB cache budget.
+      - name: Save working thumbnails
+        if: env.MODE == 'submit'
+        uses: actions/cache/save@v4
+        with:
+          path: thumbs
+          key: survey-thumbs-${{ github.run_id }}
+
+      # A push made with GITHUB_TOKEN does not trigger other workflows, by design
+      # — so deploy.yml will NOT fire for the commit above. Deploy it here instead.
+      # deploy.yml still covers pushes made by a person.
+      - uses: actions/configure-pages@v5
+        if: steps.changed.outputs.yes == 'true'
+        with:
+          enablement: true
+      - uses: actions/upload-pages-artifact@v3
+        if: steps.changed.outputs.yes == 'true'
+        with:
+          path: public
+      - id: deployment
+        uses: actions/deploy-pages@v4
+        if: steps.changed.outputs.yes == 'true'

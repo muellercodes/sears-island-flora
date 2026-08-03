@@ -12,11 +12,19 @@ thumbs-local/
 # heading for thousands of images would bloat the repo with no way to shrink it.
 # The deploy runner needs no images: data.js carries absolute R2 URLs.
 thumbs/
-# Record of what's already on R2 — local bookkeeping, rebuilt on demand.
-data/r2-manifest.json
+# data/r2-manifest.json is deliberately NOT ignored. It is the record of which
+# images are already hosted, and it is the only thing that knows an image exists
+# when the local thumbnail does not — a fresh clone, or a CI runner that submitted
+# a batch last night and is collecting it this morning. Ignored, it is empty
+# exactly when that matters, and publish cannot tell "already uploaded" from
+# "gone". Same reasoning as committing data/identifications.db.
 public/
 .DS_Store
 logs/*.log
 .env
+# wrangler's local cache — it holds the Cloudflare account id and account name.
+# Nothing needs it in git: uploads use the R2 S3 credentials from .env, and
+# wrangler is only a fallback that re-authenticates on its own.
+.wrangler/
 data/rejected/
 .drive-inbox/

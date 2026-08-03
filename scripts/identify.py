@@ -43,11 +43,20 @@ THEN, if it passed, identify the main plant or fungus.
 Two rules govern the identification:
 
 1. Be honest about uncertainty. This survey may inform land-management decisions \
-on contested ground, so a confident wrong answer is worse than no answer. If the \
-photo does not show enough to identify the organism — no flowers, no fruit, a \
-habitat shot, a mushroom from above only — say so, return kind "other", and set \
-confidence "low". Identify only to the rank the photo supports: genus is a fine \
-answer when species is not visible.
+on contested ground, so a confident wrong answer is worse than no answer. \
+Identify only to the rank the photo supports: genus is a fine answer when species \
+is not visible.
+
+   When the photo cannot support even a genus — no flowers, no fruit, a habitat \
+shot, bark alone, a mushroom from above only, a mat of several intergrown \
+organisms — set `identifiable` false and say in `note` what is missing. Do NOT \
+invent a descriptive label to fill the gap. "Unidentified mature hardwood (bark \
+only)", "Fern (unidentified colony)", "Mixed moss and lichen mat" are descriptions \
+of a photograph, not names of organisms; every one of them is added to the \
+catalogue you are shown with every future photo, so a description entered once is \
+wrong forever. A blank is recoverable, a fabricated species is not. `common` must \
+name a taxon a botanist would recognise, and `scientific` must be a genus or \
+below — never a family, order, class or division.
 
 2. Flag anything that could be a regulated invasive, even at low confidence. A \
 false positive costs someone a walk to go check; a false negative misses an \
@@ -71,7 +80,7 @@ background is still a real record of it growing at that spot."""
 SCHEMA = {
     "type": "object",
     "additionalProperties": False,
-    "required": ["is_survey_photo", "rejection_reason", "origin_status",
+    "required": ["is_survey_photo", "rejection_reason", "identifiable", "origin_status",
                  "matches_existing_id", "confidence", "note", "common", "scientific",
                  "family", "kind", "edibility", "danger", "summary", "parts",
                  "id_marks", "cautions", "lookalikes", "also_visible"],
@@ -83,6 +92,10 @@ SCHEMA = {
         "rejection_reason": {
             "type": "string",
             "description": "If is_survey_photo is false, why. Also used to note an incidental person in the background of an otherwise valid photo. Empty string otherwise.",
+        },
+        "identifiable": {
+            "type": "boolean",
+            "description": "true only if you can name an actual taxon at genus rank or below. false for a photo that supports no more than a description ('bark only', 'an unidentified fern colony', 'a mixed moss and lichen mat'). When false, leave the descriptive fields empty and explain in `note`.",
         },
         "origin_status": {
             "type": "string",
@@ -146,8 +159,30 @@ def save(p, o):
 # Reuse plantdb's split so an identification written here lands back in the file
 # the record came from — a local-only photo must never be promoted into git.
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-from plantdb import load_obs, save_obs, thumb_path, require  # noqa: E402
+from plantdb import (load_obs, save_obs, thumb_path, require,  # noqa: E402
+                     non_answer_reason, reconcile)
 import idcache  # noqa: E402
+
+
+def non_answer(r):
+    """Why this response is not an identification, or None if it is one.
+
+    A photo that cannot be identified has to come back as no species at all. The
+    older gate keyed on the convention the prompt asks for — kind "other" at low
+    confidence — and that let through every hedge with a concrete kind: a fern
+    colony is a fern, a bark shot is a tree, a moss mat is moss. Each one was
+    minted as a catalogue entry and then sent to the model with every subsequent
+    photo, so one bad entry recruits more.
+
+    So: take the model's own word for it first, and fall back to reading the name
+    it produced, using the same tests `reconcile` uses to clean up the ones that
+    got in before this existed.
+    """
+    if r.get("identifiable") is False:
+        return "the model reported it could not name a taxon"
+    if r.get("kind") == "other" and r.get("confidence") == "low":
+        return "kind 'other' at low confidence"
+    return non_answer_reason({"common": r.get("common"), "scientific": r.get("scientific")})
 
 
 def slugify(name, taken):
@@ -207,24 +242,30 @@ def apply_result(r, o, ctx, cached_sid=None):
         r["cautions"] = ["Identified from a photograph only — never eat a wild mushroom on a photo ID."] \
             + (r.get("cautions") or [])
 
+    # A merge renamed some ids; anything still pointing at an old one — a cached
+    # result, the model's own match against a catalogue built before the merge —
+    # resolves through here rather than falling through and minting the duplicate
+    # back into existence.
+    alias = ctx.setdefault("alias", {})
+    cached_sid = alias.get(cached_sid, cached_sid)
+
     if cached_sid and (cached_sid in by_id or cached_sid == "unknown"):
         # Replaying a cached result must resolve to the same species it did the
         # first time. Without this, a replay re-runs the creation path, finds the
         # slug taken, and mints a duplicate ("-2") of a species we already have.
         sid = cached_sid
         label = f"→ {by_id.get(sid, {}).get('common', sid)}"
-    elif r.get("matches_existing_id") and r["matches_existing_id"] in by_id:
-        sid = r["matches_existing_id"]
+    elif (m := alias.get(r.get("matches_existing_id"), r.get("matches_existing_id"))) in by_id:
+        sid = m
         label = f"→ {by_id[sid]['common']}"
-    elif r.get("kind") == "other" and r.get("confidence") == "low":
-        # A non-answer, not a species. The prompt asks for kind "other" at low
-        # confidence when the photo cannot support an identification — a habitat
-        # shot, a canopy, a seedling with no diagnostic features. Minting a
-        # catalogue entry for that invents a species that does not exist, and the
-        # catalogue is sent with every subsequent photo. Leave it unknown; the
-        # note still records what was missing, which is the useful part.
+    elif (why := non_answer(r)):
+        # Not a species — a description of a photograph. Minting a catalogue entry
+        # for it invents an organism that does not exist, and the catalogue is sent
+        # with every subsequent photo, so the invention spreads. Leave the record
+        # unknown; the note still records what was missing, which is the part worth
+        # keeping.
         sid = "unknown"
-        label = "unidentifiable from this photo"
+        label = f"unidentifiable from this photo ({why})"
     else:
         sid = slugify(r.get("common") or "unnamed", set(by_id))
         entry = {
@@ -365,6 +406,33 @@ def collect_batch(client, batch_id, obs, ctx, cache, counters):
     idcache.mark_collected(cache, batch_id)
 
 
+def reconcile_after(ctx, obs, cache):
+    """Repair what a batch structurally cannot get right on its own.
+
+    Every request in a batch is built from the catalogue as it stood at submission,
+    so no request can see an entry a sibling request created. Two photos of the same
+    lichen in one batch mint two entries, and no amount of prompting fixes that —
+    the information simply is not in the request. Reconciling after collection is
+    where it can be fixed, so it happens here rather than being left for someone to
+    remember.
+    """
+    dropped, merged, renames = reconcile(ctx["species"], obs, apply=True)
+    if not dropped and not merged:
+        return
+    print("\nReconciling the catalogue:")
+    for sp, reason, n in dropped:
+        print(f"  dropped {sp['id']} — {reason}; {n} record(s) back to unidentified")
+    for keep, best, losers, counts in merged:
+        print(f"  merged {', '.join(sp['id'] for sp in losers)} into {keep['id']} "
+              f"({sum(counts)} record(s))")
+    for old, new in renames.items():
+        cache.execute("UPDATE identifications SET species_id = ? WHERE species_id = ?",
+                      (new, old))
+    cache.commit()
+    save(SPECIES_F, ctx["species"])
+    save_obs(obs)
+
+
 def wait_for(client, batch_ids, poll=30):
     """Block until every batch has ended, reporting progress as it goes."""
     import time
@@ -448,7 +516,10 @@ def main():
     done = failed = rejected = reused = 0
     spend = {"in": 0, "out": 0, "cache_read": 0, "cache_write": 0}
     cache = idcache.connect()
-    ctx = {"species": species, "by_id": by_id, "catalogue": catalogue, "args": args}
+    ctx = {"species": species, "by_id": by_id, "catalogue": catalogue, "args": args,
+           # Ids retired by an earlier merge, so a cached result or a stale match
+           # lands on the entry that survived instead of recreating the duplicate.
+           "alias": {old: sp["id"] for sp in species for old in sp.get("merged_from") or []}}
 
     # --- collect: apply results from batches submitted on an earlier run ---
     if args.collect:
@@ -466,6 +537,7 @@ def main():
             collect_batch(client, bid, obs, ctx, cache, counters)
             save(SPECIES_F, ctx["species"])
             save_obs(obs)
+        reconcile_after(ctx, obs, cache)
         cin, cout = idcache.PRICES.get(args.model, (0.0, 0.0))
         cost = (counters["in"] * cin + counters["out"] * cout) * 0.5   # batch is half price
         print(f"\nCollected {counters['done']} identified, {counters['rejected']} screened out, "
@@ -509,6 +581,7 @@ def main():
             print(f"\nCollecting {bid}:")
             collect_batch(client, bid, obs, ctx, cache, counters)
             save(SPECIES_F, ctx["species"]); save_obs(obs)
+        reconcile_after(ctx, obs, cache)
         cin, cout = idcache.PRICES.get(args.model, (0.0, 0.0))
         cost = (counters["in"] * cin + counters["out"] * cout) * 0.5
         print(f"\nIdentified {counters['done']}, reused from cache {reused}, "
@@ -524,13 +597,11 @@ def main():
             failed += 1
             continue
 
-        o["id_attempts"] = o.get("id_attempts", 0) + 1   # counted even if the call fails
-        save_obs(obs)
         # Already paid for this image? The cache is keyed by content hash, so this
         # survives a reset of observations.json, a re-ingest under a new filename,
         # or a remove-then-re-add. Nothing is bought twice.
         cached = idcache.get(cache, o.get("hash"))
-        cached_sid = None
+        cached_sid = fresh = None
         if cached is not None and not args.ignore_cache:
             r, cached_sid = cached["result"], cached.get("species_id")
             reused += 1
