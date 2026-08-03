@@ -277,17 +277,23 @@ accepted and noted.
 Rejected records stay in `data/observations.json` marked `rejected: true` so the
 pipeline doesn't re-process them; their images are not published.
 
-### The second filter: a record that says nothing
+### The second filter: what counts as a survey record
 
-Passing the screener is not enough to be published. A habitat shot, a bark
-close-up, a canopy against the sky — all genuinely vegetation, and the screener is
-right to accept them — but if nothing in one could be named, it contributes no
-finding. On the map it is an anonymous pin diluting the ones that mean something.
+Passing the screener is not enough to be published. `withheld_reason` in
+`plantdb.py` asks three questions, and a record has to answer all of them:
 
-So `publish` withholds any record where nothing was identified: no species, no
-`also_visible` species in the frame, and no human field verdict. They stay in
-`data/observations.json` and in `todo`, because the photo exists and a better one
-from the same spot may settle it.
+| Withheld when | Why |
+|---|---|
+| The screener rejected it | Not a photograph of vegetation. |
+| **It has no location, or no capture date** | A sighting is a claim that a species was *here*, on *this day*. Without both there is nothing to send anyone to check and nothing to compare against a later visit. |
+| Nothing in it could be identified | A habitat shot or a bark close-up is a fair vegetation photograph, but if no organism could be named it contributes no finding and only dilutes the pins that mean something. |
+
+A record survives the third test if a human has field-verified it, or if some other
+catalogue species is visible in the frame — a plant caught in the background is
+still a real record of it growing at that spot.
+
+Withheld records stay in `data/observations.json` and in `todo`. Nothing is deleted;
+the photo exists and a better one from the same spot may settle it.
 
 This is derived, not a stored flag (`is_publishable` in `plantdb.py`), so it
 corrects itself — the moment a re-run identifies the photo or a steward records a

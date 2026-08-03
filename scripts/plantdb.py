@@ -114,27 +114,53 @@ def thumb_path(o):
     return thumb_dir(o) / o["file"]
 
 
-def is_publishable(o):
-    """Does this record say anything? A survey record with no identification doesn't.
+def withheld_reason(o):
+    """Why this record is not a survey record, or None if it is one.
 
-    A habitat shot, a bark close-up, a canopy against the sky — the screener is
-    right to accept them as vegetation photographs, but if nothing in one could be
-    named then it contributes no finding, and on the map it is an anonymous pin
-    that dilutes the ones that mean something. Withheld from the published set;
-    kept in the data, and in `todo`, because the photo still exists and a better
-    one from the same spot may settle it.
+    Three ways a photograph fails to be evidence, and the survey needs all three
+    answered before it will publish one:
 
-    Deliberately derived rather than stored as a flag, so it corrects itself: the
-    moment a re-run identifies the photo, or a person records a field verdict on
-    it, it publishes again with no bookkeeping to remember.
+      * It is not a photograph of vegetation. The screener says so.
+      * It cannot be placed or dated. A sighting is a claim that a species was HERE,
+        on THIS DAY; without both, there is nothing to send anyone to check and
+        nothing to compare against a later visit. The photo is real, but it is not
+        a survey record, and on the map it would be a pin with no coordinates and
+        in a list an undated one.
+      * Nothing in it could be identified. A habitat shot or a bark close-up is a
+        fair vegetation photograph, but if no organism could be named it contributes
+        no finding and only dilutes the pins that mean something.
+
+    Derived rather than stored as a flag, so it corrects itself — the moment a
+    re-run identifies the photo, or `refresh-gps` recovers coordinates from the
+    original, it publishes with no bookkeeping to remember. Withheld records stay
+    in the data and in `todo`; nothing is deleted.
     """
     if o.get("rejected"):
-        return False                       # not a vegetation photograph at all
-    if is_verified(o):
-        return True                        # a person went and looked; that is a finding
-    if o.get("also"):
-        return True                        # something in the frame was identified
-    return o.get("species_id", "unknown") != "unknown"
+        return "screened out — not a photograph of vegetation"
+    if not (o.get("lat") and o.get("lon")):
+        return "no location — nothing can be sent to check it"
+    if not o.get("taken"):
+        return "no capture date — the sighting cannot be placed in time"
+    if is_verified(o) or o.get("also"):
+        return None                        # a person looked, or something else in frame was named
+    if o.get("species_id", "unknown") == "unknown":
+        return "nothing in it could be identified"
+    return None
+
+
+def is_publishable(o):
+    return withheld_reason(o) is None
+
+
+def reviewable(o):
+    """Worth putting in front of a steward: it could still become a survey record.
+
+    An unidentified photo belongs in the sheet — someone who knows the flora can
+    name it, and that is exactly what `corrected` is for. A photo with no location
+    or date does not: there is no column a person could fill to fix it, so it would
+    only spend a reviewer's attention on something that can never publish.
+    """
+    return bool(not o.get("rejected") and o.get("lat") and o.get("lon") and o.get("taken"))
 
 
 def public_obs():
@@ -649,11 +675,11 @@ def cmd_verify(args):
             problems.append(f"{t.relative_to(ROOT)} still has an EXIF/XMP segment")
 
     obs = load_obs()
-    missing = [o["file"] for o in obs if not o.get("lat")]
+    missing = [o["file"] for o in obs if not o.get("lat") or not o.get("taken")]
     imprecise = [o["file"] for o in obs
                  if o.get("lat") and len(o["lat"].split(".")[-1]) < 4]
     for f in missing:
-        warnings.append(f"{f} has no coordinates — of limited survey value")
+        warnings.append(f"{f} has no location and/or no capture date — withheld from the site")
     for f in imprecise:
         problems.append(f"{f} has a coordinate rounded below survey precision")
 
@@ -693,7 +719,7 @@ def cmd_verify(args):
             print("Or widen survey_area in data/publish-config.json if they belong here.")
         sys.exit(1)
     if warnings:
-        print(f"{len(warnings)} record(s) without coordinates:")
+        print(f"{len(warnings)} record(s) missing location or date:")
         for w in warnings[:5]:
             print(f"  - {w}")
         if len(warnings) > 5:
@@ -729,9 +755,8 @@ def cmd_publish(args):
     # vegetation — someone's camera roll spilling in), and one nothing could be
     # named in. Neither the record nor its thumbnail belongs on a public site.
     kept = public_obs()
-    allpub = load(OBS_F, [])
-    screened = sum(1 for o in allpub if o.get("rejected"))
-    unidentified = len(allpub) - len(kept) - screened
+    from collections import Counter
+    held = Counter(r for r in (withheld_reason(o) for o in load(OBS_F, [])) if r)
     withheld = len(load(LOCAL_OBS_F, []))
     # Images either ride along in public/ or come from R2. The public base URL is
     # not a secret and lives in a tracked config, so the deploy runner can build
@@ -777,11 +802,10 @@ def cmd_publish(args):
             print("  python3 scripts/plantdb.py publish --prune-r2")
         if orphans and getattr(args, "prune_r2", False):
             prune_r2(orphans, prefix)
-    if screened:
-        print(f"Withheld {screened} screened-out photo(s) — not vegetation.")
-    if unidentified:
-        print(f"Withheld {unidentified} photo(s) that could not be identified — nothing "
-              f"in them was named, so they are not survey records. Still in `todo`.")
+    if held:
+        print(f"Withheld {sum(held.values())} photo(s) — kept in the data, not published:")
+        for reason, n in held.most_common():
+            print(f"  {n:>3}  {reason}")
     if withheld:
         print(f"Withheld {withheld} local-only record(s) from {LOCAL_OBS_F.name} — not published.")
     print("Full-resolution originals stay local in photos/ and are never published.")
@@ -1151,12 +1175,7 @@ def cmd_sheet_push(args):
     """Send the machine columns to the sheet. Never touches the human columns."""
     sheets, cfg = _sheets()
     svc = sheets.service(cfg)
-    # Everything except what the screener threw out. Unidentified photos DO go to
-    # the sheet — a steward who knows the flora can name one, and `corrected` is
-    # exactly the route back for a record the pipeline gave up on. A screened-out
-    # photo is different: it is not vegetation, so there is nothing to review, and
-    # a verdict on it could not change anything (it stays withheld either way).
-    obs = [o for o in load_obs() if not o.get("rejected")]
+    obs = [o for o in load_obs() if reviewable(o)]
     species = {s["id"]: s for s in enriched_species()}
     base = (load(PUBCFG_F, {}).get("r2_public_base") or "").rstrip("/")
     if base:
