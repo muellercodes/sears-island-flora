@@ -1,0 +1,30 @@
+name: Tests
+
+# The rules these cover are judgment calls that read as arbitrary to whoever edits
+# them next — including the person who wrote them, a month later. The one that most
+# needs holding is the identification guard: it has to block descriptions without
+# swallowing "Japanese Knotweed (possible young shoot)", and widening it slightly
+# would lose a regulated-invasive lead silently.
+#
+# Stdlib only, no network, no data files touched — every function under test is
+# pure, so this is safe to run anywhere and takes well under a second.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unittest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run the suite
+        run: python3 -m unittest discover -s tests -t . -v

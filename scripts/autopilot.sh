@@ -16,10 +16,6 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 ROOT="$PWD"
 
-INBOX="${1:-${PLANT_INBOX:-}}"
-[ -z "$INBOX" ] && { echo "usage: $0 /path/to/shared/folder   (or set PLANT_INBOX)"; exit 1; }
-[ -d "$INBOX" ] || { echo "Shared folder not found: $INBOX"; exit 1; }
-
 mkdir -p logs
 LOG="$ROOT/logs/autopilot.log"
 say() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG"; }
@@ -27,10 +23,29 @@ say() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG"; }
 PY="$ROOT/.venv/bin/python"
 [ -x "$PY" ] || PY=python3
 
-# Credentials up front: the sheet sync needs GOOGLE_*, not just ANTHROPIC_API_KEY.
+# Credentials up front: the sheet sync needs GOOGLE_*, not just ANTHROPIC_API_KEY,
+# and the ingest source below is chosen on whether Drive is configured.
 if [ -f "$ROOT/.env" ]; then set -a; . "$ROOT/.env"; set +a; fi
 
-say "checking $INBOX"
+# Where photos come from. Contributors drop into the shared Google Drive folder, so
+# that is the default and no argument is needed — this used to demand a local
+# folder, which is how it came to be watching a directory nobody puts photos in any
+# more while the README described Drive. A local folder is still accepted, as the
+# fallback when Drive is not set up.
+INBOX="${1:-${PLANT_INBOX:-}}"
+if [ -n "$INBOX" ]; then
+  [ -d "$INBOX" ] || { echo "Folder not found: $INBOX"; exit 1; }
+  SOURCE="folder"
+elif [ -n "${GOOGLE_DRIVE_FOLDER_ID:-}" ]; then
+  SOURCE="drive"
+else
+  echo "Nowhere to ingest from. Either set GOOGLE_DRIVE_FOLDER_ID in .env"
+  echo "(see the README: 'Photos from a shared Drive folder'), or pass a local folder:"
+  echo "  $0 /path/to/folder"
+  exit 1
+fi
+
+say "checking ${INBOX:-the shared Drive folder}"
 
 # 1. Take in whatever the stewards verified since last time. Optional — a project
 #    without a sheet configured just skips it.
@@ -49,7 +64,11 @@ p = pathlib.Path("data/observations.json")
 print(len(json.load(open(p))) if p.exists() else 0)
 EOF
 )
-$PY scripts/plantdb.py ingest "$INBOX" --batch "$(date '+%Y-%m-%d')" >>"$LOG" 2>&1
+if [ "$SOURCE" = "drive" ]; then
+  $PY scripts/plantdb.py ingest-drive --batch "$(date '+%Y-%m-%d')" >>"$LOG" 2>&1
+else
+  $PY scripts/plantdb.py ingest "$INBOX" --batch "$(date '+%Y-%m-%d')" >>"$LOG" 2>&1
+fi
 after=$($PY - <<'EOF'
 import json,pathlib
 p = pathlib.Path("data/observations.json")

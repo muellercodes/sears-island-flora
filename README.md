@@ -530,11 +530,15 @@ images:
 ### On your laptop
 
 ```bash
-./scripts/install-watcher.sh ~/Dropbox/sears-island-photos
+./scripts/install-watcher.sh                     # read the shared Drive folder
+./scripts/install-watcher.sh ~/Dropbox/photos    # ...or a local folder
 ```
 
-A launchd agent running `autopilot.sh` every 15 minutes. Only runs when the machine
-is awake and online. Stop it with
+A launchd agent running `autopilot.sh` every 15 minutes. With no argument it reads
+the shared Drive folder, the same place the cloud pipeline reads — it used to demand
+a local directory, which is how it came to be watching a folder nobody puts photos
+in while this README described Drive. Only runs when the machine is awake and
+online. Stop it with
 `launchctl unload ~/Library/LaunchAgents/com.mueller.searsisland.plist`.
 
 To publish:
@@ -654,6 +658,34 @@ Forked from a family foraging guide. Four inversions, each for a reason:
 
 Foraging notes are retained as secondary detail — they're accurate and occasionally
 useful — but they are not what this site is for.
+
+## Tests
+
+```bash
+python3 -m unittest discover -s tests -t .
+```
+
+Stdlib only, no network, under a second. Runs on every push and pull request, and
+again in the deploy workflow — the pipeline commits straight to `main` every night,
+so a broken rule must not be able to reach the site by skipping a PR.
+
+What they cover is deliberately narrow: **the judgment calls, not the plumbing.**
+Each rule below encodes a decision that reads as arbitrary to whoever edits it next,
+and would break silently.
+
+| Suite | Holds |
+|---|---|
+| `test_identification_guard` | Blocks descriptions **without** swallowing "Japanese Knotweed (possible young shoot)". Widen it and a regulated-invasive lead is lost with no error. |
+| `test_publishing` | What counts as a survey record; what the site may list as a species |
+| `test_reconcile` | Merge, drop and orphan logic — and the three things it must never touch: a seed entry, the target of a field check, the `unknown` sentinel |
+| `test_steward_sheet` | What counts as a verification, and refusing a sheet whose columns moved |
+| `test_data_integrity` | Reads the committed data: the reference list and catalogue agree, nothing published is missing a location or date, no verification field is incomplete |
+
+Writing these found a real hole: the hedge-word check ran *after* parentheticals
+were stripped, so "Fern (unidentified colony)" with a valid genus in `scientific`
+would have passed both tests and entered the catalogue. In production it had only
+ever been caught by the rank check, so the two were not the independent tests they
+looked like.
 
 ## Is it ready?
 

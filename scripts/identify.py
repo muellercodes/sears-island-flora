@@ -378,6 +378,14 @@ def collect_batch(client, batch_id, obs, ctx, cache, counters):
         if kind != "succeeded":
             err = getattr(getattr(res.result, "error", None), "type", kind)
             print(f"  ! {o['file']}: {kind} ({err})")
+            # An attempt is counted before the call so a crash still counts — the
+            # retry cap has to hold even when a run dies. But a batch that expired
+            # or was cancelled never looked at the photo, so charging it an attempt
+            # would retire a perfectly good image after two unlucky nights. Give it
+            # back. A genuine error keeps its attempt: something about that request
+            # failed, and repeating it is what the cap exists to stop.
+            if kind in ("expired", "canceled", "cancelled"):
+                o["id_attempts"] = max(0, o.get("id_attempts", 1) - 1)
             counters["failed"] += 1
             continue
         msg = res.result.message
