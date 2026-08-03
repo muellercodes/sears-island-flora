@@ -1316,6 +1316,145 @@ def cmd_cache(args):
         print(f"{len(uncached)} would cost about ${est:.2f} to identify at current rates.")
 
 
+# Columns whose names are taken from NatureServe's documented bulk-upload
+# requirements. Everything after Longitude is a best guess at useful extra context
+# and should be reconciled against the official template before a real submission —
+# the required set is documented publicly, the optional set is not.
+IMAP_REQUIRED = ["Source Unique ID", "Species", "Date", "Observer", "Latitude", "Longitude"]
+IMAP_EXTRA = ["Common Name", "Comments", "Photo URL"]
+
+# iMapInvasives is an INVASIVE species database with a jurisdiction-defined tracked
+# species list. A native goldenrod record does not belong in it, however well
+# verified — sending one is noise to the people receiving it.
+IMAP_TRACKED = ("invasive", "regulated")
+
+
+def imap_blocker(o, sp):
+    """Why this record cannot go to iMapInvasives, or None if it can.
+
+    The rule that does most of the work here is the project's own: nothing is a
+    finding until a person has confirmed it on the ground. Submitting machine
+    identifications into a state dataset that land managers act on would be a
+    plain breach of that, and it would put unreviewed guesses somewhere they
+    cannot easily be taken back.
+
+    It also happens to solve the one field the survey does not otherwise collect.
+    iMap requires an Observer — the person who observed the species — and for a
+    field-verified record that is exactly who `verified.by` is. The constraint the
+    project already imposes on itself supplies the field the state requires.
+    """
+    if o.get("rejected"):
+        return "screened out — not a photograph of vegetation"
+    v = o.get("verified") or {}
+    if v.get("status") not in ("confirmed", "corrected"):
+        return {"rejected": "a person looked and rejected the identification",
+                "revisit": "flagged for another look — not settled"}.get(
+                    v.get("status"), "not field-verified by a person")
+    if not v.get("by", "").strip():
+        return "no observer — the verification is unattributed"
+    if not sp:
+        return "species is not in the catalogue"
+    if sp.get("origin_status") not in IMAP_TRACKED:
+        return f"{sp.get('origin_status', 'unknown')} — iMapInvasives tracks invasives"
+    if not (o.get("lat") and o.get("lon")):
+        return "no coordinates"
+    if not o.get("taken"):
+        return "no observation date"
+    return None
+
+
+def cmd_export_imap(args):
+    """Write field-verified invasive records as an iMapInvasives bulk-upload CSV.
+
+    There is no public API to submit to — the bulk upload tool is run by the
+    jurisdiction administrator, so this produces the file to hand them rather than
+    posting anything anywhere.
+    """
+    import csv
+    obs = [o for o in load_obs() if not o.get("local_only")]
+    species = {s["id"]: s for s in enriched_species()}
+
+    rows, blocked = [], []
+    for o in obs:
+        sp = species.get(effective_species(o))
+        why = imap_blocker(o, sp)
+        if why:
+            blocked.append((o, why))
+            continue
+        v = o["verified"]
+        base = load(PUBCFG_F, {})
+        url = (base.get("r2_public_base") or "").rstrip("/")
+        prefix = (base.get("r2_prefix") or "thumbs").strip("/")
+        notes = " ".join(x for x in (o.get("note"), v.get("notes")) if x)
+        rows.append({
+            # The content hash is the photo's real identity and never changes, which
+            # is what a Source Unique ID is for — resubmitting the same record must
+            # not create a second one.
+            "Source Unique ID": o.get("hash") or o["id"],
+            "Species": sp.get("scientific", ""),
+            "Date": (v.get("date") or o.get("taken", ""))[:10],
+            "Observer": v["by"],
+            "Latitude": o["lat"],
+            "Longitude": o["lon"],
+            "Common Name": sp.get("common", ""),
+            "Comments": notes[:900],
+            "Photo URL": f"{url}/{prefix}/{o['file']}" if url else "",
+        })
+
+    print(f"{len(rows)} record(s) are eligible for iMapInvasives.\n")
+    for r in rows[:15]:
+        print(f"  {r['Species']:<32} {r['Date']}  {r['Latitude']}, {r['Longitude']}"
+              f"  obs. {r['Observer']}")
+    if len(rows) > 15:
+        print(f"  ... and {len(rows) - 15} more")
+
+    if blocked:
+        from collections import Counter
+        print(f"\n{len(blocked)} record(s) not eligible:")
+        for why, n in Counter(w for _, w in blocked).most_common():
+            print(f"  {n:>3}  {why}")
+
+    # iMap matches the Species column against its jurisdiction species list, so a
+    # name carrying a qualifier — a bare genus, "cf.", a two-genus hedge — will not
+    # match even though it is the honest thing for the catalogue to say. Better to
+    # name them here than have the admin hand the whole file back.
+    def unmatchable(name):
+        if len(norm_sci(name).split()) < 2:
+            return "genus only"
+        if re.search(r"\b(cf|aff|sp|spp)\b\.?|/", name):
+            return "carries a qualifier"
+        return None
+
+    rough = [(r, why) for r in rows if (why := unmatchable(r["Species"]))]
+    if rough:
+        print(f"\n{len(rough)} record(s) have a name iMapInvasives may not match against")
+        print("its species list. Settle the identification in the field, or ask the")
+        print("administrator what they want in the column:")
+        for r, why in rough[:8]:
+            print(f"  {r['Species']:<34} ({why})")
+
+    if not rows:
+        print("\nNothing to write. This is the expected state until someone has been")
+        print("out and confirmed a regulated or invasive find — which is the whole")
+        print("point: an AI identification is a lead, and a lead is not a state record.")
+        print("\nRecord one with:  plantdb.py confirm --file <name> --by \"Name\" --status confirmed")
+        return
+
+    out = pathlib.Path(args.out or ROOT / "imapinvasives-export.csv")
+    with open(out, "w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=IMAP_REQUIRED + IMAP_EXTRA)
+        w.writeheader()
+        w.writerows(rows)
+    print(f"\nWrote {out}")
+    print("\nBefore sending it:")
+    print("  * Every Observer name must already exist in iMapInvasives — the upload")
+    print("    fails otherwise. Have them make an account first, or ask the admin.")
+    print("  * Ask for the current bulk-upload template. The required columns here are")
+    print("    from NatureServe's published spec; the optional ones are a guess.")
+    print("  * Maine's administrator is the Maine Natural Areas Program:")
+    print("    chad.hammer@maine.gov / invasives.mnap@maine.gov")
+
+
 def cmd_batches(args):
     """Batches submitted to the Batch API and not yet collected.
 
@@ -1994,6 +2133,10 @@ if __name__ == "__main__":
                     help=f"allow withdrawing more than {MAX_UNATTENDED_CLEARS} verifications at once")
     pl.set_defaults(func=cmd_sheet_pull)
     sub.add_parser("cache", help="what we've already paid to identify, and what it cost").set_defaults(func=cmd_cache)
+    ei = sub.add_parser("export-imap",
+                        help="field-verified invasive records as an iMapInvasives bulk-upload CSV")
+    ei.add_argument("--out", help="where to write the CSV (default: imapinvasives-export.csv)")
+    ei.set_defaults(func=cmd_export_imap)
     sub.add_parser("batches", help="batches submitted to the Batch API and not yet collected")\
        .set_defaults(func=cmd_batches)
     sub.add_parser("doctor", help="report what is configured and what still blocks a run").set_defaults(func=cmd_doctor)
