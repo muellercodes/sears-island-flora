@@ -385,6 +385,15 @@ const day = o => (o.taken || "").slice(0, 10);
 // photos below the fold, and open on wider screens where the text costs nothing.
 const ROOMY = window.matchMedia("(min-width: 700px)");
 function openWide(el) { if (el) el.open = ROOMY.matches; }
+// What is known about when and where, stated rather than left out. A record whose
+// photo reached us with its EXIF already stripped has neither, and silently showing
+// nothing reads as an oversight — "date unknown" is the actual finding.
+function whenWhere(o) {
+  const bits = [(o.taken || "").slice(0, 10) || "date unknown"];
+  if (!hasLoc(o)) bits.push("no location");
+  return bits.join(" · ");
+}
+
 function dateSpan(list) {
   const d = [...new Set(list.map(day).filter(Boolean))].sort();
   if (!d.length) return "";
@@ -484,7 +493,7 @@ function photoHTML(o) {
   return `<button class="pcard" data-id="${o.species_id}">
     <img loading="lazy" src="${esc(thumbSrc(o))}" alt="${esc(s.common)}">
     <div class="cap"><div class="n">${esc(s.common)}</div>
-      <div class="t">${esc((o.taken || "").slice(0, 10))} · <span class="conf-${o.confidence}">${esc(o.confidence)}</span></div>
+      <div class="t">${esc(whenWhere(o))} · <span class="conf-${o.confidence}">${esc(o.confidence)}</span></div>
     </div></button>`;
 }
 
