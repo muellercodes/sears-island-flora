@@ -1,6 +1,6 @@
 {
  "_about": "Reference list for flagging non-native and regulated plants in Maine. `watchlist` is what a survey should actively hunt for; `classification` is the status of species already in this guide.",
- "_source": "Maine DACF Do Not Sell list and Watch List. Every status here was checked on 2026-08-03 against the official handout (horticulture/documents/InvasivePlantListHandoutUpdated2024.pdf), which carries the additions effective 1/1/2024. Two watchlist entries were corrected from regulated to invasive as a result. Recheck before reporting to an agency — the rule is reviewed every 5 years and this is still a working copy, not the rule.",
+ "_source": "Maine DACF Do Not Sell list and Watch List. Every status here was VERIFIED on 2026-08-03 against the official handout (horticulture/documents/InvasivePlantListHandoutUpdated2024.pdf), which carries the additions effective 1/1/2024; two watchlist entries were corrected from regulated to invasive as a result. Even so, VERIFY against the current published list before reporting anything to an agency — the rule is reviewed every 5 years, and this file is a working copy, not the rule.",
  "_source_url": "https://www.maine.gov/dacf/php/horticulture/invasiveplants.shtml",
  "_status_values": {
   "native": "Indigenous to Maine.",
