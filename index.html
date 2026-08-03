@@ -316,6 +316,10 @@
 <script>
 const DB = window.PLANT_DB || {species:[], observations:[]};
 const SP = Object.fromEntries(DB.species.map(s => [s.id, s]));
+// "unknown" is the app's fallback entry for a record with no species, not a species.
+// It has to stay in SP so a stray record still renders, but listing it would put a
+// card reading "Unidentified / Habitat shot" among the survey's actual findings.
+const SPECIES = DB.species.filter(s => s.id !== "unknown");
 const OBS = DB.observations;
 const byS = {};       // photos where this species is the main subject
 const alsoS = {};     // photos where it's visible but not the subject — still a real record of it growing there
@@ -383,7 +387,7 @@ function dateSpan(list) {
 
 // ---- filters -------------------------------------------------------------
 $("filters").innerHTML = ORDER.map(k => {
-  const n = DB.species.filter(s => statusOf(s) === k).length;
+  const n = SPECIES.filter(s => statusOf(s) === k).length;
   return n ? `<button class="chip ${STATUS[k].chip}" data-k="${k}" aria-pressed="false">${STATUS[k].label} <span style="opacity:.6">${n}</span></button>` : "";
 }).join("");
 $("filters").onclick = e => {
@@ -421,7 +425,7 @@ const matches = s => (!query || haystack(s).includes(query)) && (!active.size ||
 
 // ---- render --------------------------------------------------------------
 function render() {
-  const list = DB.species.filter(matches)
+  const list = SPECIES.filter(matches)
     .sort((a, b) => ORDER.indexOf(statusOf(a)) - ORDER.indexOf(statusOf(b)) || a.common.localeCompare(b.common));
 
   if (mode === "map") {

@@ -689,6 +689,21 @@ handles all three. Originals in `photos/` are left alone.
 Ships with 41 species from the upstream project (an inland Maine roadside walk),
 classified by status: 19 native, 10 undetermined, 8 introduced, 3 invasive, 1 regulated.
 
+**The site publishes only species something was actually photographed as.** The
+catalogue is two things at once and a reader should only ever see one of them: to
+the identifier it is vocabulary, there so the model matches a plant instead of
+inventing a name for it; to a reader of a page headed "Sears Island Flora Survey"
+it looks like an inventory of the island. Most of that vocabulary has never been
+photographed here, and four entries are flagged invasive or regulated — a reviewer
+filtering for invasives would have seen them listed beside genuine finds. So
+`publish` filters to what has a photograph behind it (`recorded_species`), and the
+rest stays in `data/species.json` doing the job it is for.
+
+The same reasoning is why `reconcile` drops auto-created entries nothing references.
+Retiring the Orono batch deleted its records but left the species they created —
+including *Japanese Knotweed*, status regulated, on a survey of an island it was
+never photographed on.
+
 Treat it as a starting vocabulary, not a baseline. Coastal island flora differs
 substantially from an inland roadside, and identification quality on this catalogue
 does not guarantee quality on Sears Island. **Test with real island photos before

@@ -177,6 +177,32 @@ def area_check(obs):
     return area, inside, outside, enforcing
 
 
+def recorded_species(species, obs):
+    """Only the species some photograph in this set actually shows.
+
+    The catalogue is two things at once, and the site should only ever present one
+    of them. To the identifier it is vocabulary — 40-odd species carried over from
+    an inland roadside walk upstream, there so the model can match a plant instead
+    of inventing a name for it. To a reader of a page headed "Sears Island Flora
+    Survey" it looks like an inventory of the island.
+
+    Most of that vocabulary has never been photographed here, and four entries are
+    flagged invasive or regulated. A reviewer filtering for invasives would see them
+    listed beside genuine finds — a claim about contested ground that nothing in
+    this survey supports. So publishing shows what was photographed, and the rest
+    stays in data/species.json doing the job it is actually for.
+
+    `unknown` is always kept: the app falls back to it for any record whose species
+    is missing, and without it those records render as an error instead of a photo.
+    """
+    ref = {"unknown"}
+    for o in obs:
+        ref.add(o.get("species_id", "unknown"))
+        ref.add(effective_species(o))
+        ref.update(o.get("also") or [])
+    return [s for s in species if s["id"] in ref]
+
+
 def enriched_species():
     """Species with regulatory status applied from the reference list."""
     species = load(SPECIES_F, [])
@@ -446,6 +472,10 @@ def cmd_build(args):
     for o in obs:
         o["thumb"] = f"{thumb_dir(o).name}/{o['file']}"
     DATA_JS.parent.mkdir(parents=True, exist_ok=True)
+    # Same filter publish applies, so previewing with `serve` shows what a reader
+    # will see rather than the full identification vocabulary. Local-only records
+    # count as recorded here — locally they are exactly what you are checking.
+    species = recorded_species(species, obs)
     payload = {"species": species, "observations": obs,
                "generated": datetime.datetime.now().strftime("%Y-%m-%d %H:%M")}
     notice = load(PUBCFG_F, {}).get("notice")
@@ -644,7 +674,8 @@ def cmd_publish(args):
     for o in kept:
         o.pop("hash", None)
         o["thumb"] = f"{base}/{prefix}/{o['file']}" if base else f"thumbs/{o['file']}"
-    payload = {"species": enriched_species(), "observations": kept,
+    species = recorded_species(enriched_species(), kept)
+    payload = {"species": species, "observations": kept,
                "generated": datetime.datetime.now().strftime("%Y-%m-%d %H:%M")}
     if cfg.get("notice"):
         payload["notice"] = cfg["notice"]
