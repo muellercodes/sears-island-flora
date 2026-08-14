@@ -1425,5 +1425,695 @@
   "merged_from": [
    "pixie-cup-lichen-trumpet-lichen"
   ]
+ },
+ {
+  "id": "viburnum-seedling",
+  "common": "Viburnum (seedling)",
+  "scientific": "Viburnum sp.",
+  "family": "Adoxaceae",
+  "kind": "shrub",
+  "edibility": "unknown",
+  "summary": "A young opposite-leaved shrub seedling, most likely a Viburnum, growing on shaded forest-floor duff. Several native Maine viburnums (witherod, hobblebush, maple-leaved viburnum, highbush cranberry) bear edible-to-marginal fruit, but a seedling this small offers nothing to harvest and cannot be named to species. Mark the spot and return when the plant fruits.",
+  "parts": [],
+  "id_marks": [
+   "Leaves strictly opposite in pairs along the stem",
+   "Blades broadly ovate with coarse, fairly regular marginal teeth",
+   "Pinnate veins deeply impressed above, giving a quilted look",
+   "Dull, slightly glaucous blue-green upper surface, no milky sap when torn"
+  ],
+  "cautions": [
+   "Do not eat fruit from an unidentified Viburnum \u2014 some species' raw fruits are strongly purgative",
+   "Seedling identity is provisional; confirm on a mature plant before treating as a food source"
+  ],
+  "lookalikes": [
+   "Invasive bush honeysuckle (Lonicera morrowii/tatarica) \u2014 also opposite-leaved, but its leaf margins are smooth (untoothed), not coarsely serrate",
+   "Dogwood (Cornus sp.) \u2014 opposite leaves but entire margins and stringy latex threads when a leaf is slowly torn",
+   "Young maple (Acer) \u2014 opposite but palmately lobed and palmately veined, not pinnate"
+  ],
+  "origin_status": "unknown",
+  "source": "auto (claude-opus-5)"
+ },
+ {
+  "id": "chokecherry-probable",
+  "common": "Chokecherry (probable)",
+  "scientific": "Prunus cf. virginiana",
+  "family": "Rosaceae",
+  "kind": "shrub",
+  "edibility": "edible-with-caution",
+  "summary": "Chokecherry is a native thicket-forming shrub or small tree whose astringent red-to-black fruit is a classic jelly, syrup and wine base once cooked and strained. The flesh is edible but the seeds, leaves and bark contain cyanogenic compounds, so the pits must never be crushed or eaten. This individual needs a margin and fruit-cluster check to rule out regulated glossy buckthorn.",
+  "parts": [
+   {
+    "part": "Ripe fruit (dark purple-black)",
+    "use": "Food",
+    "season": "Late August into September, after color deepens past red",
+    "prep": "Cook with water, strain out pits and skins, sweeten heavily for jelly, syrup or juice; do not crush or grind the pits"
+   },
+   {
+    "part": "Fruit",
+    "use": "Dye",
+    "season": "Late summer",
+    "prep": "Simmer for a pink to purple dye bath"
+   }
+  ],
+  "id_marks": [
+   "Alternate, simple, oval leaves with an abrupt short point and fine sharp teeth along the margin",
+   "Fruits many, in an elongate drooping raceme from a single stalk, ripening red then near-black",
+   "Two small glands on the leaf stalk near the blade base",
+   "Scraped twig or crushed leaf smells of bitter almond / maraschino cherry",
+   "Bark gray-brown, smooth on young stems with horizontal lenticels"
+  ],
+  "cautions": [
+   "Seeds, leaves, twigs and bark contain cyanogenic glycosides; do not chew pits or brew leaf tea",
+   "Raw fruit is extremely astringent and can upset the stomach in quantity",
+   "Foliage is a real poisoning hazard to livestock, especially when wilted"
+  ],
+  "lookalikes": [
+   "Glossy buckthorn (Frangula alnus, regulated invasive) \u2014 leaves untoothed with strongly parallel veins, fruit in small axillary clusters rather than a long racema",
+   "Common buckthorn (Rhamnus cathartica, regulated) \u2014 twigs often thorn-tipped, leaves subopposite, fruit strongly laxative",
+   "Black cherry (Prunus serotina) \u2014 leaves narrower with blunt incurved teeth and a rusty hair line along the midrib beneath",
+   "Bush honeysuckle (Lonicera spp., invasive) \u2014 opposite leaves and paired berries, never alternate"
+  ],
+  "origin_status": "native",
+  "source": "auto (claude-opus-5)",
+  "danger": true
+ },
+ {
+  "id": "oak-acorns",
+  "common": "Oak (acorns)",
+  "scientific": "Quercus sp.",
+  "family": "Fagaceae",
+  "kind": "tree",
+  "edibility": "edible-with-caution",
+  "summary": "These are the acorns of an oak, dropped onto a trail \u2014 evidence of a mast-bearing oak overhead or nearby. Acorns are a serious wild starch food but every species carries bitter, astringent tannins that must be leached out before eating. Which oak this is matters for the forager: white-group acorns leach fast, red-group acorns are far more tannic and take much longer.",
+  "parts": [
+   {
+    "part": "Ripe acorns (nutmeat)",
+    "use": "Food",
+    "season": "Late September through October, gathered as they drop",
+    "prep": "Discard any with weevil holes or that float. Shell, then leach the ground or halved nutmeat in repeated changes of water \u2014 cold-water leaching over days preserves the starch for flour; hot-water leaching is faster but makes a mush. Leach until no bitterness remains, then dry and grind."
+   },
+   {
+    "part": "Caps and tannin-rich leach water",
+    "use": "Dye / Utility",
+    "season": "Autumn",
+    "prep": "Simmer for a brown to black dye or a tanning/astringent wash; not for drinking."
+   }
+  ],
+  "id_marks": [
+   "Nut is a single hard-shelled acorn seated in a scaly cap",
+   "Cap here is shallow and saucer-like, covering only the top of the nut",
+   "Look up: oak leaves are lobed \u2014 bristle-tipped lobes mean red group, rounded lobes mean white group",
+   "Red-group acorns take two seasons to mature and taste intensely bitter raw; white-group are milder"
+  ],
+  "cautions": [
+   "Raw acorns are astringent and high in tannin \u2014 eating them unleached causes stomach upset and, in quantity, kidney stress",
+   "Check every nut for weevil exit holes and mold before processing",
+   "Do not confuse the tannin leach water for anything drinkable"
+  ],
+  "lookalikes": [
+   "Beech nuts (Fagus grandifolia) \u2014 three-sided nuts in a spiny husk, not a scaly cap",
+   "Hazelnuts (Corylus) \u2014 nut wrapped in a leafy ragged bract, not a cup"
+  ],
+  "origin_status": "native",
+  "source": "auto (claude-opus-5)",
+  "merged_from": [
+   "oak"
+  ]
+ },
+ {
+  "id": "common-mullein",
+  "common": "Common Mullein",
+  "scientific": "Verbascum thapsus",
+  "family": "Scrophulariaceae",
+  "kind": "herb",
+  "edibility": "edible-with-caution",
+  "summary": "Common mullein is a European biennial widespread on disturbed, gravelly, sunny ground throughout Maine. First year it is a flannel-soft rosette; second year it throws a single stout spike up to 2 m with yellow five-petalled flowers. Leaves and flowers are a traditional respiratory tea, but the hairs must be strained out.",
+  "parts": [
+   {
+    "part": "Leaves",
+    "use": "Tea / Medicinal",
+    "season": "Any time in growing season",
+    "prep": "Dry, then steep and strain carefully through cloth or fine filter \u2014 the fine hairs irritate the throat."
+   },
+   {
+    "part": "Flowers",
+    "use": "Tea / Infused oil",
+    "season": "Mid to late summer as they open",
+    "prep": "Pick fresh yellow flowers; steep in tea or infuse in oil (traditional ear oil)."
+   },
+   {
+    "part": "Dried stalk",
+    "use": "Utility",
+    "season": "Autumn/winter, dead stalk",
+    "prep": "Dry pithy stalk makes a hand-drill spindle or a dipped torch."
+   }
+  ],
+  "id_marks": [
+   "Unbranched single stalk with dense club-like spike of yellow flowers",
+   "Leaves densely woolly-felted on both sides, soft as flannel",
+   "Leaf bases run down the stem (decurrent), stem feels winged",
+   "Basal rosette of large grey-green woolly leaves"
+  ],
+  "cautions": [
+   "Always strain leaf tea \u2014 the hairs cause throat and mouth irritation",
+   "Seeds contain saponins and rotenone-like compounds; do not eat seeds"
+  ],
+  "lookalikes": [
+   "Moth mullein (Verbascum blattaria) \u2014 nearly hairless stem and leaves, flowers in a loose spike",
+   "Great burdock rosette \u2014 leaves woolly only underneath and stalks hollow, not felted on both sides",
+   "Lamb's ear (Stachys byzantina) \u2014 garden plant, opposite leaves and pink-purple flowers"
+  ],
+  "origin_status": "introduced",
+  "source": "auto (claude-opus-5)"
+ },
+ {
+  "id": "birch-polypore",
+  "common": "Birch Polypore",
+  "scientific": "Fomitopsis betulina",
+  "family": "Fomitopsidaceae",
+  "kind": "fungus",
+  "edibility": "unknown",
+  "summary": "Birch polypore is a bracket fungus that grows only on birch, usually on dead or dying trunks and downed logs like this one. Very young, soft brackets are edible after long cooking but most people use it as a tea or tincture; older ones turn corky and tough. It is also a classic fire-tinder and field bandage material.",
+  "parts": [
+   {
+    "part": "Young soft brackets",
+    "use": "Tea / Medicinal",
+    "season": "Summer through autumn while still pale and pliable",
+    "prep": "Slice thin and simmer 20+ minutes for a bitter tea, or dry for storage; too tough to eat once corky"
+   },
+   {
+    "part": "Dried flesh",
+    "use": "Utility",
+    "season": "Any time, including old brackets",
+    "prep": "Dry fully; the corky layer strops blades and takes a spark for tinder"
+   }
+  ],
+  "id_marks": [
+   "Grows only on birch \u2014 check for white peeling bark on the host log",
+   "Kidney-shaped to hoof-shaped bracket, tan to pale brown on top, smooth and suede-like",
+   "Whitish margin that rolls under to a fine white pore surface",
+   "Flesh white, rubbery-corky, with a faint mushroomy-bitter smell",
+   "Attached by a narrow stub rather than broadly fused to the wood"
+  ],
+  "cautions": [
+   "Identified from a photograph only \u2014 never eat a wild mushroom on a photo ID.",
+   "Bitter and tough; large amounts can upset the stomach",
+   "Never eat a bracket fungus that is soft, wet, or insect-riddled",
+   "Positive host ID matters \u2014 this species is defined by growing on birch"
+  ],
+  "lookalikes": [
+   "Fomitopsis pinicola (red-belted conk) \u2014 thick, resinous crust with a red-orange band, on conifers",
+   "Trametes versicolor (turkey tail) \u2014 thin, zoned, concentric bands and a wavy fan, grows in overlapping clusters",
+   "Ganoderma applanatum \u2014 flat, hard, brown crust with a white pore surface that bruises brown when scratched"
+  ],
+  "origin_status": "native",
+  "source": "auto (claude-opus-5)",
+  "merged_from": [
+   "birch-polypore-2"
+  ]
+ },
+ {
+  "id": "violet",
+  "common": "Violet",
+  "scientific": "Viola sp.",
+  "family": "Violaceae",
+  "kind": "herb",
+  "edibility": "edible",
+  "summary": "Common woodland violets form low rosettes of heart-shaped leaves and are among the most reliable spring greens in Maine forests. Leaves and flowers are edible raw or cooked, mild and slightly mucilaginous. Most Viola species here are native, though a few garden escapes occur, so treat unflowered clumps as genus-level records.",
+  "parts": [
+   {
+    "part": "Young leaves",
+    "use": "Food",
+    "season": "Spring through early summer while tender",
+    "prep": "Raw in salads or cooked as a mild potherb; slightly thickening in soups"
+   },
+   {
+    "part": "Flowers",
+    "use": "Food",
+    "season": "Spring",
+    "prep": "Raw as garnish, candied, or steeped for a coloured syrup"
+   }
+  ],
+  "id_marks": [
+   "Leaves heart-shaped with a notched base and rounded teeth along the margin",
+   "Each leaf on its own long petiole rising directly from a basal crown \u2014 no true upright leafy stem",
+   "Leaf blade dull green, blades often cupped or folded upward",
+   "No milky sap when torn; no smell"
+  ],
+  "cautions": [
+   "Roots and seeds of violets can be strongly laxative or emetic \u2014 eat leaves and flowers only",
+   "Eat large quantities of leaves sparingly; saponin content can upset some stomachs",
+   "Do not confuse with unflowered heart-leaved plants growing in the same shade \u2014 confirm the basal rosette habit"
+  ],
+  "lookalikes": [
+   "Wild ginger (Asarum canadense) \u2014 leaves paired on a short stem and strongly aromatic when crushed, violets are odourless",
+   "Lesser celandine (Ficaria verna, invasive) \u2014 glossy leaves and a fleshy tuberous root, violets have fibrous roots",
+   "Young coltsfoot \u2014 leaf underside white-woolly with angular lobes, violet leaves are green beneath"
+  ],
+  "origin_status": "unknown",
+  "source": "auto (claude-opus-5)",
+  "merged_from": [
+   "violet-2",
+   "violet-3"
+  ]
+ },
+ {
+  "id": "purple-loosestrife-probable",
+  "common": "Purple Loosestrife (probable)",
+  "scientific": "Lythrum cf. salicaria",
+  "family": "Lythraceae",
+  "kind": "herb",
+  "edibility": "inedible",
+  "summary": "A tall wetland-margin perennial that forms dense single-species thickets and displaces native marsh vegetation; it is a listed invasive in Maine and on the state Do Not Sell list. Of no real food value to a forager, but of high value to report \u2014 an early, small colony is worth pulling before it seeds. Confirmation here rests on the square stem and the magenta flower spike.",
+  "parts": [],
+  "id_marks": [
+   "Stem distinctly 4-angled (square) in cross-section, often reddish and woody at the base",
+   "Leaves narrow, lance-shaped, sessile with rounded or heart-shaped bases, opposite or in whorls of three",
+   "Flowers in a long dense terminal spike, magenta-pink, 5\u20136 wrinkled petals",
+   "Grows in wet ground: ditches, marsh edges, roadside swales",
+   "Dead brown seed spikes persist into the following spring"
+  ],
+  "cautions": [
+   "Do not transport cut stems or root fragments; both can start new colonies",
+   "Pulled plants and seed heads should be bagged, not composted on site"
+  ],
+  "lookalikes": [
+   "Willowherb / fireweed (Epilobium) \u2014 round stem, alternate leaves, 4 notched petals",
+   "Blue vervain (Verbena hastata) \u2014 square stem too, but flowers are small and blue-violet in slender candelabra spikes with toothed, stalked leaves",
+   "Steeplebush (Spiraea tomentosa) \u2014 woody shrub with fuzzy white-backed leaves, not an herbaceous square stem"
+  ],
+  "origin_status": "invasive",
+  "source": "auto (claude-opus-5)"
+ },
+ {
+  "id": "gray-coral-fungus",
+  "common": "Gray Coral Fungus",
+  "scientific": "Clavulina cf. cinerea",
+  "family": "Clavulinaceae",
+  "kind": "fungus",
+  "edibility": "unknown",
+  "summary": "A small gray, coral-like branching fungus that fruits from soil and leaf litter in hardwood and mixed woods in late summer and fall. It is generally considered edible but bland, and gray coral fungi are frequently parasitized by a mold that makes them mushy and unappetizing. Its main interest to a forager is learning to separate true coral fungi from lichens and from similar-looking Ramaria species.",
+  "parts": [
+   {
+    "part": "Whole young fruiting body",
+    "use": "Food",
+    "season": "Late summer to fall, while firm and pale",
+    "prep": "Trim grit from the base, wash carefully among the branches, and cook thoroughly; discard any specimen that is soft, discolored, or moldy"
+   }
+  ],
+  "id_marks": [
+   "Repeatedly branched, coral-like fruiting body 3-8 cm tall, uniformly ash-gray to gray-brown",
+   "Branch tips blunt, often flattened or crested rather than sharply pointed",
+   "Flesh fleshy-brittle and snaps when bent, not tough, rubbery, or cartilaginous like a lichen",
+   "Grows from soil and leaf litter, not from wood or on bare mineral crust",
+   "No cup-shaped or trumpet-shaped tips (that would indicate a Cladonia lichen)"
+  ],
+  "cautions": [
+   "Identified from a photograph only \u2014 never eat a wild mushroom on a photo ID.",
+   "Coral fungi as a group include species that cause gastrointestinal upset; only eat firm, correctly identified specimens",
+   "Gray coral fungi are commonly infected by a parasitic mold that turns them soft and whitish \u2014 do not eat these",
+   "Ground-level fruiting bodies pick up grit and can carry animal contamination; wash and cook well"
+  ],
+  "lookalikes": [
+   "Cladonia rangiferina and other reindeer lichens \u2014 tough, wiry, hollow branches that stay rigid when dry and soften when wet, versus brittle fleshy tissue",
+   "Ramaria species \u2014 usually larger, often tinged yellow, pink, or ochre, with more pointed tips",
+   "Sebacina/Tremellodendron false coral \u2014 waxy, tough, and cartilaginous to the touch"
+  ],
+  "origin_status": "native",
+  "source": "auto (claude-opus-5)"
+ },
+ {
+  "id": "japanese-knotweed-probable",
+  "common": "Japanese Knotweed (probable)",
+  "scientific": "Reynoutria japonica (cf.; syn. Fallopia japonica)",
+  "family": "Polygonaceae",
+  "kind": "herb",
+  "edibility": "edible-with-caution",
+  "summary": "Japanese knotweed is an aggressive regulated invasive that forms dense clonal thickets from deep rhizomes, especially on disturbed and coastal edges. The young spring shoots are edible and rhubarb-like, but harvesting does not control it and moving any stem or root fragment starts a new colony. Any stand on Sears Island is worth reporting with a location.",
+  "parts": [
+   {
+    "part": "Young shoots under about 8 in (spring)",
+    "use": "Food",
+    "season": "Early spring, while shoots are tender and hollow",
+    "prep": "Peel if stringy, chop, and cook like rhubarb in compotes, pies, or soups; high in oxalic acid so eat in moderation"
+   }
+  ],
+  "id_marks": [
+   "Stout, hollow, jointed stems, often reddish-flecked, bamboo-like",
+   "A thin papery sheath (ocrea) ringing the stem at each node",
+   "Leaves alternate on a zigzag stem, broadly ovate with an abruptly pointed tip and a flat or squared base",
+   "Forms dense single-species stands from spreading rhizomes",
+   "Sprays of small creamy-white flowers in late summer from leaf axils"
+  ],
+  "cautions": [
+   "Do not compost, mow, or transport cuttings \u2014 fragments of stem or rhizome root readily and spread the infestation",
+   "Regulated in Maine: not to be sold or moved; report locations to land managers",
+   "High oxalic acid content; avoid large quantities, especially with kidney stone history",
+   "Stands are often sprayed with herbicide \u2014 do not eat shoots from managed sites"
+  ],
+  "lookalikes": [
+   "Dogwood shrubs (Cornus sp.) \u2014 opposite leaves with strongly arching veins and solid woody stems, not hollow jointed ones",
+   "Giant knotweed (Reynoutria sachalinensis) \u2014 much larger leaves with a deeply heart-shaped base",
+   "Bohemian knotweed (R. \u00d7 bohemica) \u2014 hybrid, intermediate leaf base with sparse stiff hairs on the underside veins"
+  ],
+  "origin_status": "regulated",
+  "source": "auto (claude-opus-5)"
+ },
+ {
+  "id": "big-leaved-aster",
+  "common": "Big-leaved Aster",
+  "scientific": "Eurybia cf. macrophylla",
+  "family": "Asteraceae",
+  "kind": "herb",
+  "edibility": "edible-with-caution",
+  "summary": "A native woodland aster that spreads by rhizomes into extensive carpets of large heart-shaped basal leaves, most of which never flower. Where it does bloom, late-summer pale blue-violet ray flowers appear on a stiff stalk. The very young spring leaves have been eaten as a cooked green, but it is chiefly of interest as a forest-floor indicator rather than a food plant.",
+  "parts": [
+   {
+    "part": "Very young unfolding leaves",
+    "use": "Food",
+    "season": "Early spring, while still small and soft",
+    "prep": "Boil or steam as a potherb; older leaves become rough and unpalatable"
+   }
+  ],
+  "id_marks": [
+   "Leaf blade heart-shaped with a deep notch (sinus) at the base",
+   "Long, often channelled petiole, sometimes winged near the blade",
+   "Margins coarsely and irregularly toothed",
+   "Blade surface rough/sandpapery to the touch, green on both sides \u2014 not white-woolly beneath",
+   "Grows in dense rhizomatous patches of leaves only, most stems never flowering"
+  ],
+  "cautions": [
+   "Positive ID is hard without flowers; do not eat leafy rosettes you cannot name",
+   "Asteraceae greens can irritate sensitive individuals; sample sparingly"
+  ],
+  "lookalikes": [
+   "Coltsfoot (Tussilago farfara) \u2014 leaf underside densely white-woolly, and it favours wet, disturbed roadside soils",
+   "Wild ginger (Asarum canadense) \u2014 paired fuzzy leaves from a spicy-smelling rhizome, no toothed margins",
+   "Violets (Viola spp.) \u2014 much smaller heart-shaped leaves with rounded teeth and no rough surface"
+  ],
+  "origin_status": "native",
+  "source": "auto (claude-opus-5)"
+ },
+ {
+  "id": "orange-peel-fungus-probable",
+  "common": "Orange Peel Fungus (probable)",
+  "scientific": "Aleuria cf. aurantia",
+  "family": "Pyronemataceae",
+  "kind": "fungus",
+  "edibility": "unknown",
+  "summary": "A brilliant orange cup fungus that fruits on bare or mossy disturbed soil, paths and litter in late summer and autumn. It is technically edible but thin, brittle and near-flavourless, so it is mostly a striking find rather than a food. Its value to a forager is as a distinctive, easily-learned ground cup fungus.",
+  "parts": [
+   {
+    "part": "Whole fruitbody",
+    "use": "Food (novelty)",
+    "season": "Late summer through autumn",
+    "prep": "Rinse grit from the cup, use raw as a garnish or briefly cooked; texture is brittle and flavour negligible"
+   }
+  ],
+  "id_marks": [
+   "Bright orange, irregularly flaring cup or ear-shaped lobes, often split at the margin",
+   "Outer surface paler orange to whitish and slightly downy",
+   "No stalk to speak of, sitting directly on soil or moss",
+   "Flesh very thin and brittle, snapping rather than tearing",
+   "Growing on bare or mossy ground and litter, not on wood"
+  ],
+  "cautions": [
+   "Identified from a photograph only \u2014 never eat a wild mushroom on a photo ID.",
+   "Confirm the underside is smooth (no gills or blunt ridges) before eating anything orange from the forest floor",
+   "Ground-level cups collect grit and should be washed well",
+   "Do not eat any fungus identified only from a top-down photo"
+  ],
+  "lookalikes": [
+   "Chanterelle (Cantharellus spp.) \u2014 has blunt false gills running down a distinct stem; orange peel fungus has a smooth underside and no stem",
+   "Otidea / Peziza cups \u2014 duller brown to tan rather than vivid orange",
+   "Jelly fungi such as Tremella mesenterica \u2014 rubbery-gelatinous and grow on wood, not soil"
+  ],
+  "origin_status": "native",
+  "source": "auto (claude-opus-5)"
+ },
+ {
+  "id": "flat-topped-white-aster",
+  "common": "Flat-topped White Aster",
+  "scientific": "Doellingeria umbellata",
+  "family": "Asteraceae",
+  "kind": "herb",
+  "edibility": "inedible",
+  "summary": "A tall native aster of damp meadows, thickets and old-field edges, blooming late summer into fall with broad flat-topped sprays of small white daisies. Not a food plant, but a major late-season nectar source and a useful indicator of moist, undisturbed native habitat. Worth recording as a native community member rather than harvesting.",
+  "parts": [],
+  "id_marks": [
+   "Flat-topped (corymb-like) cluster of many small heads, not a spike or panicle",
+   "White rays, yellow disk turning brownish-purple with age",
+   "Stems stout, often reddish-purple, mostly smooth below",
+   "Leaves alternate, narrow-lance-shaped, entire (no teeth), tapering at both ends, nearly stalkless",
+   "Grows 2-5 ft tall in moist thickets and field edges"
+  ],
+  "cautions": [
+   "Not considered edible; asters have no significant forage value",
+   "Members of Asteraceae can cause contact irritation or allergy in sensitive people"
+  ],
+  "lookalikes": [
+   "Lance-leaved aster (Symphyotrichum lanceolatum) \u2014 inflorescence more elongated/panicle-like rather than distinctly flat-topped",
+   "Calico aster (S. lateriflorum) \u2014 much smaller heads borne along one side of spreading branches",
+   "Common yarrow \u2014 also flat-topped and white but with finely dissected, feathery leaves and a strong aroma"
+  ],
+  "origin_status": "native",
+  "source": "auto (claude-opus-5)"
+ },
+ {
+  "id": "chaga-probable",
+  "common": "Chaga (probable)",
+  "scientific": "Inonotus obliquus",
+  "family": "Hymenochaetaceae",
+  "kind": "fungus",
+  "edibility": "unknown",
+  "summary": "Chaga is a sterile conk of a parasitic polypore that erupts through the bark of living birches as a black, fissured, burnt-looking mass. It is harvested as a decoction/tea rather than eaten as a mushroom. Confirmation requires a birch host and a rusty golden-brown interior.",
+  "parts": [
+   {
+    "part": "Sterile conk (outer black crust removed)",
+    "use": "Tea",
+    "season": "Year-round; easiest in winter",
+    "prep": "Chunk the orange interior and simmer long and slow, or steep repeatedly; never eat raw and never boil into a concentrate for daily use"
+   }
+  ],
+  "id_marks": [
+   "Hard, black, deeply cracked mass like burnt charcoal bursting through bark",
+   "Interior is rusty orange-brown and corky, not white",
+   "Grows on living birch, usually at a wound or branch scar",
+   "Irregular lump, not a shelf with pores underneath"
+  ],
+  "cautions": [
+   "Identified from a photograph only \u2014 never eat a wild mushroom on a photo ID.",
+   "Contains high oxalate levels; regular heavy use is linked to kidney damage",
+   "May interact with blood thinners and diabetes medication",
+   "Harvesting kills or weakens the host tree if the whole conk is taken; leave a portion",
+   "Do not confuse with a burl \u2014 cut and check for orange interior before harvesting"
+  ],
+  "lookalikes": [
+   "Bark burl or canker callus \u2014 solid wood inside, no orange corky tissue",
+   "Black knot fungus (Apiosporina) \u2014 on cherry, elongated along the twig rather than a rounded lump",
+   "Burnt or fire-scarred bark \u2014 flat, not protruding"
+  ],
+  "origin_status": "native",
+  "source": "auto (claude-opus-5)"
+ },
+ {
+  "id": "common-earthball",
+  "common": "Common Earthball",
+  "scientific": "Scleroderma cf. citrinum",
+  "family": "Sclerodermataceae",
+  "kind": "fungus",
+  "edibility": "toxic",
+  "summary": "A firm, rootless yellow-brown ball found on soil and rotten wood in hardwood forest, distinguished by a thick warty rind and a solid dark spore mass. It is frequently mistaken for an edible puffball and causes vomiting and cramps when eaten. Treat every round woodland ball as suspect until sliced open.",
+  "parts": [],
+  "id_marks": [
+   "Rind thick (1\u20133 mm) and tough, surface breaking into coarse yellow-brown scales or cracks",
+   "No stalk; attached by white mycelial cords at the base",
+   "Sliced in half, interior is firm and purple-black to marbled grey-black, never white and marshmallow-like",
+   "Opens by irregular tearing at the top rather than a neat pore",
+   "Grows on soil, mossy ground, or very rotten wood in mixed woods"
+  ],
+  "cautions": [
+   "Toxic \u2014 causes nausea, vomiting and abdominal cramps; not made safe by cooking",
+   "Never harvest a round fungus without cutting it top to bottom first"
+  ],
+  "lookalikes": [
+   "True puffballs (Lycoperdon, Calvatia) \u2014 thin rind and uniformly pure white interior when young; earthball interior darkens fast",
+   "Immature Amanita 'egg' \u2014 slicing reveals an outline of a folded mushroom with gills and stem inside",
+   "Pigskin poison puffball (other Scleroderma spp.) \u2014 also toxic, so the whole genus is off the menu"
+  ],
+  "origin_status": "native",
+  "source": "auto (claude-opus-5)",
+  "danger": true
+ },
+ {
+  "id": "meadowsweet",
+  "common": "Meadowsweet",
+  "scientific": "Spiraea alba var. latifolia",
+  "family": "Rosaceae",
+  "kind": "shrub",
+  "edibility": "edible-with-caution",
+  "summary": "A native low shrub of damp meadows, old fields, and shoreline edges, blooming white in mid to late summer. Leaves and flowers make a pleasant astringent tea; it has no significant food value beyond that. Common on Sears Island's open, moist ground and a useful native to distinguish from planted ornamental spireas.",
+  "parts": [
+   {
+    "part": "Leaves and flowering tops",
+    "use": "Tea",
+    "season": "Mid to late summer while in bloom",
+    "prep": "Dry or use fresh as a mild astringent infusion; steep briefly, do not boil hard."
+   }
+  ],
+  "id_marks": [
+   "Woody shrub 2-4 ft with reddish-brown, slightly angled stems",
+   "Leaves alternate, narrow-elliptic, sharply and evenly toothed nearly to the base",
+   "Flowers tiny, white to blush pink, 5 petals, in a dense narrow pyramidal panicle at the stem tip",
+   "Leaf undersides green and essentially smooth, not woolly",
+   "Grows in wet meadows, ditches, and old fields"
+  ],
+  "cautions": [
+   "Contains salicylate-like compounds; avoid if sensitive to aspirin",
+   "Only a beverage plant \u2014 do not eat quantities of leaves"
+  ],
+  "lookalikes": [
+   "Steeplebush (Spiraea tomentosa) \u2014 deep rose-pink flowers and dense white-woolly leaf undersides",
+   "Japanese spirea (Spiraea japonica, introduced) \u2014 flat-topped pink flower clusters rather than a tall narrow spire",
+   "Hardhack/other ornamental spireas \u2014 check for a narrow spire-shaped panicle and toothed narrow leaves"
+  ],
+  "origin_status": "native",
+  "source": "auto (claude-opus-5)"
+ },
+ {
+  "id": "enchanter-s-nightshade",
+  "common": "Enchanter's Nightshade",
+  "scientific": "Circaea sp.",
+  "family": "Onagraceae",
+  "kind": "herb",
+  "edibility": "unknown",
+  "summary": "A small, easily overlooked woodland herb of shaded hardwood floors, with paired ovate leaves on a thin stem and a spike of minute white flowers that ripen into bur-like hooked fruits. Of little food value, but a useful indicator of moist, rich forest soil. Worth noting here mainly because the surrounding scalloped rosette leaves could be garlic mustard.",
+  "parts": [],
+  "id_marks": [
+   "Leaves in opposite pairs, ovate with a heart-shaped or rounded base and widely spaced shallow teeth",
+   "Slender, often reddish, sparsely hairy stem 15-50 cm tall",
+   "Tiny flowers in a loose terminal spike, later small pear-shaped fruits covered in hooked bristles that stick to clothing",
+   "Grows in shade on leaf litter, often in loose colonies from runners"
+  ],
+  "cautions": [
+   "Not a recommended edible; no reliable food use",
+   "Do not confuse with true nightshades (Solanum), which are toxic \u2014 despite the common name this is unrelated"
+  ],
+  "lookalikes": [
+   "Garlic mustard (Alliaria petiolata, regulated invasive) \u2014 leaves alternate on the stem, kidney-shaped and round-scalloped when young, and smell of garlic when crushed",
+   "Solanum nightshades \u2014 alternate leaves and star-shaped flowers with a yellow center, versus opposite leaves and 2-petaled flowers here"
+  ],
+  "origin_status": "native",
+  "source": "auto (claude-opus-5)"
+ },
+ {
+  "id": "indian-pipe-ghost-plant",
+  "common": "Indian Pipe / Ghost Plant",
+  "scientific": "Monotropa uniflora",
+  "family": "Ericaceae",
+  "kind": "herb",
+  "edibility": "inedible",
+  "summary": "A leafless, chlorophyll-free flowering plant that parasitizes mycorrhizal fungi associated with forest trees, so it appears as ghostly white stalks pushing up through leaf litter in shaded hardwood or mixed woods. It is native and often locally uncommon; it wilts and blackens within hours of picking and has no practical food use. Treat it as a look-and-leave species and record the location.",
+  "parts": [],
+  "id_marks": [
+   "Entire plant waxy white to translucent pink, no green anywhere \u2014 no chlorophyll",
+   "Single nodding bell-shaped flower per stem, turning upright as it sets seed",
+   "Leaves reduced to small scales pressed against the stem",
+   "Grows in small clumps directly out of leaf litter in deep shade",
+   "Bruised or picked tissue quickly turns black and gelatinous"
+  ],
+  "cautions": [
+   "Not a food plant; edibility is poorly documented and it contains glycosides",
+   "Cannot be transplanted or cultivated \u2014 it depends on a specific fungal-tree network, so leave it in place"
+  ],
+  "lookalikes": [
+   "Pinesap (Hypopitys monotropa) \u2014 several flowers per stalk and yellowish to tan, not a single white bell",
+   "Ghost pipe's dried blackened stalks from a prior year \u2014 brittle and dark rather than waxy white",
+   "A white mushroom or Indian pipe's stems seen from above \u2014 check for the scale-leaves along the stem, absent on fungi"
+  ],
+  "origin_status": "native",
+  "source": "auto (claude-opus-5)",
+  "merged_from": [
+   "indian-pipe-ghost-plant-2"
+  ]
+ },
+ {
+  "id": "woodland-sunflower",
+  "common": "Woodland Sunflower",
+  "scientific": "Helianthus cf. divaricatus",
+  "family": "Asteraceae",
+  "kind": "herb",
+  "edibility": "edible-with-caution",
+  "summary": "A native perennial sunflower of dry woods and woodland edges, spreading by rhizomes into small colonies. Flower heads are yellow-rayed with a yellow (not dark) center, distinguishing it from Black-eyed Susan. Of minor forage value \u2014 the tubers/rhizomes of some Helianthus are edible but this species is not a notable food plant.",
+  "parts": [
+   {
+    "part": "Young flower petals (rays)",
+    "use": "Food",
+    "season": "Mid to late summer while heads are fresh",
+    "prep": "Pull rays free of the bitter disc and scatter raw over food; small quantities only."
+   },
+   {
+    "part": "Rhizomes",
+    "use": "Food",
+    "season": "Late fall after top growth dies",
+    "prep": "Thin and fibrous in this species; scrub and cook well. Generally not worth digging, and digging destroys the colony."
+   }
+  ],
+  "id_marks": [
+   "Stem leaves mostly opposite and sessile (no or nearly no stalk), lance-shaped and tapering to a point",
+   "Three prominent veins arising near the leaf base",
+   "Leaf surface rough/sandpapery to the touch, stem often smooth and reddish below the heads",
+   "Heads few, with 8-15 broad yellow rays and a YELLOW central disc",
+   "Colonial habit \u2014 several stems from creeping rhizomes in dry, part-shaded woodland edge"
+  ],
+  "cautions": [
+   "Confirm the disc is yellow, not dark brown, before calling it a sunflower rather than a Rudbeckia",
+   "Composite family; people sensitive to ragweed/asters may react to handling or eating the flowers",
+   "Do not dig rhizomes in a survey area \u2014 it destroys a native colony for very little food"
+  ],
+  "lookalikes": [
+   "Black-eyed Susan (Rudbeckia hirta) \u2014 dark brown-black central cone and bristly-hairy, stalked lower leaves",
+   "Hairy Hawkweed / other Hieracium \u2014 heads all of strap-shaped ray florets with no true disc, and milky sap when a stem is broken",
+   "Heliopsis helianthoides (oxeye) \u2014 leaves clearly stalked with toothed triangular blades, rays persisting and papery",
+   "Bidens / beggarticks \u2014 leaves divided into leaflets and fruits with barbed awns"
+  ],
+  "origin_status": "native",
+  "source": "auto (claude-opus-5)"
+ },
+ {
+  "id": "crested-coral-fungus",
+  "common": "Crested Coral Fungus",
+  "scientific": "Clavulina cf. coralloides",
+  "family": "Clavulinaceae",
+  "kind": "fungus",
+  "edibility": "unknown",
+  "summary": "A small white-to-cream branching coral fungus fruiting from mossy forest floor litter in late summer. Clavulina corals are generally considered edible but bland and are often parasitized by a gray mold that renders them unappetizing. Positive ID of coral fungi to species requires close examination of branch tips and flesh.",
+  "parts": [
+   {
+    "part": "Fruiting body",
+    "use": "Food",
+    "season": "Late summer to autumn",
+    "prep": "Collect only firm, clean white specimens; brush free of grit, cook thoroughly. Bland texture-food, best in mixed dishes."
+   }
+  ],
+  "id_marks": [
+   "Small (2-6 cm) upright coral-like fruit bodies, white to cream",
+   "Branches divide repeatedly, tips crested, blunt or toothed rather than sharply pointed",
+   "Growing from mossy soil and leaf litter, not from wood in a clustered rosette",
+   "Flesh brittle, not gelatinous"
+  ],
+  "cautions": [
+   "Identified from a photograph only \u2014 never eat a wild mushroom on a photo ID.",
+   "Some coral fungi (notably certain Ramaria) are strongly laxative \u2014 do not eat any coral fungus without confirming the genus",
+   "Old or gray-discolored specimens are often mold-infected; discard",
+   "Grit-trapping branches; wash carefully"
+  ],
+  "lookalikes": [
+   "Ramaria spp. \u2014 usually larger, often ochre/pinkish/tan, some cause severe GI upset",
+   "Artomyces pyxidatus (crown-tipped coral) \u2014 grows on dead wood with distinctly crown-shaped cup tips",
+   "Clavulinopsis / Clavaria spp. \u2014 mostly unbranched or sparsely branched simple clubs"
+  ],
+  "origin_status": "native",
+  "source": "auto (claude-opus-5)"
  }
 ]
