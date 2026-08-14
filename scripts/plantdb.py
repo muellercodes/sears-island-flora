@@ -1677,17 +1677,31 @@ def cmd_remove(args):
     import r2
     creds = r2.config()
 
+    # Only objects actually on R2 need deleting. Most withheld records were never
+    # uploaded — publish only sends what it publishes — so without this the run
+    # spends a network round trip per record to delete something that isn't there.
+    hosted = [o for o in sel if not o.get("local_only") and o["file"] in manifest]
+
+    if hosted and not creds:
+        # The wrangler fallback spawns a Node process per object with a 120s
+        # timeout, and its OAuth expires and cannot refresh unattended. At any real
+        # batch size it looks exactly like a hang, which is how this command came to
+        # be interrupted halfway with nothing saved. Say so instead of starting.
+        print(f"\n{len(hosted)} of these have an image on R2, and R2 credentials are "
+              f"not set ({', '.join(r2.missing_vars())}).")
+        print("Deleting them would fall back to `npx wrangler`, one process per object,")
+        print("which at this size will look like a hang. Load the credentials first:")
+        print("\n    set -a && . ./.env && set +a")
+        print(f"\nOr pass --keep-images to remove the {len(sel)} record(s) and leave the")
+        print("images on R2 (they become unreferenced; `publish --prune-r2` clears those).")
+        sys.exit(1)
+
     gone = 0
     for o in sel:
-        if not o.get("local_only") and (creds or bucket):
+        if o in hosted and not args.keep_images:
             key = f"{prefix}/{o['file']}"
             try:
-                if creds:
-                    r2.delete(creds, key)
-                else:
-                    subprocess.run(["npx", "wrangler", "r2", "object", "delete",
-                                    f"{bucket}/{key}", "--remote"],
-                                   capture_output=True, text=True, timeout=120)
+                r2.delete(creds, key)
                 gone += 1
             except Exception as e:
                 print(f"  ! could not delete {key}: {e}")
@@ -1695,7 +1709,24 @@ def cmd_remove(args):
         thumb_path(o).unlink(missing_ok=True)
 
     drop = {o["file"] for o in sel}
-    save_obs([o for o in obs if o["file"] not in drop])
+    obs = [o for o in obs if o["file"] not in drop]
+    save_obs(obs)
+
+    # Removing records orphans the catalogue entries they created — an auto entry
+    # exists only because a photo matched it. Left behind, they are species the
+    # survey claims to have found with nothing standing behind them, which is how
+    # retiring the Orono batch left a regulated knotweed entry on a survey of an
+    # island it was never photographed on. Reconcile here so `remove` cannot leave
+    # that state, rather than relying on someone remembering the second command.
+    species = load(SPECIES_F, [])
+    dropped, merged, _ = reconcile(species, obs, apply=True)
+    if dropped or merged:
+        save(SPECIES_F, species)
+        save_obs(obs)
+        for sp, reason, _ in dropped:
+            print(f"  dropped catalogue entry {sp['id']} — {reason}")
+        for keep, _, losers, _ in merged:
+            print(f"  merged {', '.join(l['id'] for l in losers)} into {keep['id']}")
     save(R2_MANIFEST, manifest)
     # The location sidecar is written at ingest and never read, so an entry left
     # behind here is invisible — but the file is tracked, so orphans accumulate in
@@ -2202,6 +2233,8 @@ if __name__ == "__main__":
     rm.add_argument("--batch", help="every record from this batch")
     rm.add_argument("--file", nargs="*", help="these specific filenames")
     rm.add_argument("--yes", action="store_true", help="actually delete (otherwise just previews)")
+    rm.add_argument("--keep-images", action="store_true",
+                    help="remove the records but leave their images on R2")
     rm.set_defaults(func=cmd_remove)
     pr = sub.add_parser("promote", help="move local-only records into the published set")
     pr.add_argument("--batch", help="only records from this batch")
