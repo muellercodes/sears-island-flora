@@ -1316,6 +1316,198 @@ def cmd_cache(args):
         print(f"{len(uncached)} would cost about ${est:.2f} to identify at current rates.")
 
 
+# Columns whose names are taken from NatureServe's documented bulk-upload
+# requirements. Everything after Longitude is a best guess at useful extra context
+# and should be reconciled against the official template before a real submission —
+# the required set is documented publicly, the optional set is not.
+IMAP_REQUIRED = ["Source Unique ID", "Species", "Date", "Observer", "Latitude", "Longitude"]
+IMAP_EXTRA = ["Common Name", "Comments", "Photo URL"]
+
+# iMapInvasives is an INVASIVE species database with a jurisdiction-defined tracked
+# species list. A native goldenrod record does not belong in it, however well
+# verified — sending one is noise to the people receiving it.
+IMAP_TRACKED = ("invasive", "regulated")
+
+
+def imap_blocker(o, sp):
+    """Why this record cannot go to iMapInvasives, or None if it can.
+
+    The rule that does most of the work here is the project's own: nothing is a
+    finding until a person has confirmed it on the ground. Submitting machine
+    identifications into a state dataset that land managers act on would be a
+    plain breach of that, and it would put unreviewed guesses somewhere they
+    cannot easily be taken back.
+
+    It also happens to solve the one field the survey does not otherwise collect.
+    iMap requires an Observer — the person who observed the species — and for a
+    field-verified record that is exactly who `verified.by` is. The constraint the
+    project already imposes on itself supplies the field the state requires.
+    """
+    if o.get("rejected"):
+        return "screened out — not a photograph of vegetation"
+    v = o.get("verified") or {}
+    if v.get("status") not in ("confirmed", "corrected"):
+        return {"rejected": "a person looked and rejected the identification",
+                "revisit": "flagged for another look — not settled"}.get(
+                    v.get("status"), "not field-verified by a person")
+    if not v.get("by", "").strip():
+        return "no observer — the verification is unattributed"
+    if not sp:
+        return "species is not in the catalogue"
+    if sp.get("origin_status") not in IMAP_TRACKED:
+        return f"{sp.get('origin_status', 'unknown')} — iMapInvasives tracks invasives"
+    if not (o.get("lat") and o.get("lon")):
+        return "no coordinates"
+    if not o.get("taken"):
+        return "no observation date"
+    return None
+
+
+def cmd_export_imap(args):
+    """Write field-verified invasive records as an iMapInvasives bulk-upload CSV.
+
+    There is no public API to submit to — the bulk upload tool is run by the
+    jurisdiction administrator, so this produces the file to hand them rather than
+    posting anything anywhere.
+    """
+    import csv
+    obs = [o for o in load_obs() if not o.get("local_only")]
+    species = {s["id"]: s for s in enriched_species()}
+
+    rows, blocked = [], []
+    for o in obs:
+        sp = species.get(effective_species(o))
+        why = imap_blocker(o, sp)
+        if why:
+            blocked.append((o, why))
+            continue
+        v = o["verified"]
+        base = load(PUBCFG_F, {})
+        url = (base.get("r2_public_base") or "").rstrip("/")
+        prefix = (base.get("r2_prefix") or "thumbs").strip("/")
+        notes = " ".join(x for x in (o.get("note"), v.get("notes")) if x)
+        rows.append({
+            # The content hash is the photo's real identity and never changes, which
+            # is what a Source Unique ID is for — resubmitting the same record must
+            # not create a second one.
+            "Source Unique ID": o.get("hash") or o["id"],
+            "Species": sp.get("scientific", ""),
+            "Date": (v.get("date") or o.get("taken", ""))[:10],
+            "Observer": v["by"],
+            "Latitude": o["lat"],
+            "Longitude": o["lon"],
+            "Common Name": sp.get("common", ""),
+            "Comments": notes[:900],
+            "Photo URL": f"{url}/{prefix}/{o['file']}" if url else "",
+        })
+
+    print(f"{len(rows)} record(s) are eligible for iMapInvasives.\n")
+    for r in rows[:15]:
+        print(f"  {r['Species']:<32} {r['Date']}  {r['Latitude']}, {r['Longitude']}"
+              f"  obs. {r['Observer']}")
+    if len(rows) > 15:
+        print(f"  ... and {len(rows) - 15} more")
+
+    if blocked:
+        from collections import Counter
+        print(f"\n{len(blocked)} record(s) not eligible:")
+        for why, n in Counter(w for _, w in blocked).most_common():
+            print(f"  {n:>3}  {why}")
+
+    # iMap matches the Species column against its jurisdiction species list, so a
+    # name carrying a qualifier — a bare genus, "cf.", a two-genus hedge — will not
+    # match even though it is the honest thing for the catalogue to say. Better to
+    # name them here than have the admin hand the whole file back.
+    def unmatchable(name):
+        if len(norm_sci(name).split()) < 2:
+            return "genus only"
+        if re.search(r"\b(cf|aff|sp|spp)\b\.?|/", name):
+            return "carries a qualifier"
+        return None
+
+    rough = [(r, why) for r in rows if (why := unmatchable(r["Species"]))]
+    if rough:
+        print(f"\n{len(rough)} record(s) have a name iMapInvasives may not match against")
+        print("its species list. Settle the identification in the field, or ask the")
+        print("administrator what they want in the column:")
+        for r, why in rough[:8]:
+            print(f"  {r['Species']:<34} ({why})")
+
+    if not rows:
+        print("\nNothing to write. This is the expected state until someone has been")
+        print("out and confirmed a regulated or invasive find — which is the whole")
+        print("point: an AI identification is a lead, and a lead is not a state record.")
+        print("\nRecord one with:  plantdb.py confirm --file <name> --by \"Name\" --status confirmed")
+        return
+
+    out = pathlib.Path(args.out or ROOT / "imapinvasives-export.csv")
+    with open(out, "w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=IMAP_REQUIRED + IMAP_EXTRA)
+        w.writeheader()
+        w.writerows(rows)
+    print(f"\nWrote {out}")
+    print("\nBefore sending it:")
+    print("  * Every Observer name must already exist in iMapInvasives — the upload")
+    print("    fails otherwise. Have them make an account first, or ask the admin.")
+    print("  * Ask for the current bulk-upload template. The required columns here are")
+    print("    from NatureServe's published spec; the optional ones are a guess.")
+    print("  * Maine's administrator is the Maine Natural Areas Program:")
+    print("    chad.hammer@maine.gov / invasives.mnap@maine.gov")
+
+
+def cmd_check_photos(args):
+    """Do these files still carry a location and a date? Check BEFORE uploading.
+
+    Exists because of a real and expensive surprise: 83 photographs reached the
+    survey with their EXIF stripped, and it was only visible after they had been
+    ingested, thumbnailed and paid for. The loss happened at export, not at upload —
+    dragging out of macOS Photos hands you a rendered derivative rather than the
+    file it is holding, and plain "Export…" drops GPS unless Location Information is
+    ticked. Neither is visible by looking at the files, and the stripped copies
+    carry a full-size but empty EXIF block, so even the file size looks plausible.
+
+    So: export two or three, run this on the folder, upload the rest only once it
+    says they are good.
+    """
+    folder = pathlib.Path(os.path.expanduser(args.folder)).resolve()
+    if not folder.is_dir():
+        sys.exit(f"Not a folder: {folder}")
+    found = sorted(p for p in folder.rglob("*") if p.suffix.lower() in EXTS and p.is_file())
+    if not found:
+        sys.exit(f"No images found under {folder}")
+
+    limit = args.limit or 10
+    good, bad = [], []
+    for p in found:
+        e = exif_of(p)
+        (good if (e["lat"] and e["taken"]) else bad).append((p, e))
+
+    print(f"{len(found)} image(s) in {folder.name}\n")
+    for p, e in good[:limit]:
+        print(f"  ok    {p.name[:44]:<46} {e['taken'][:10]}  {e['lat']}, {e['lon']}")
+    if len(good) > limit:
+        print(f"  ... and {len(good) - limit} more good")
+    for p, e in bad[:limit]:
+        missing = " and ".join(m for m, v in (("location", e["lat"]), ("date", e["taken"])) if not v)
+        print(f"  BAD   {p.name[:44]:<46} no {missing}")
+    if len(bad) > limit:
+        print(f"  ... and {len(bad) - limit} more bad")
+
+    print(f"\n{len(good)} of {len(found)} carry both a location and a date.")
+    if not bad:
+        print("Safe to upload — every one of these can become a survey record.")
+        return
+    print(f"\n{len(bad)} would be ingested, identified, paid for, and then withheld:")
+    print("a photograph that cannot be placed or dated is not a survey record.")
+    print("\nIf these came out of macOS Photos, the metadata was lost on the way OUT of")
+    print("Photos, not on the way to Drive — so moving or re-uploading them will not")
+    print("bring it back. Go back to Photos and use:")
+    print("\n    File > Export > Export Unmodified Original for N Photos…")
+    print("\nNot drag-and-drop, which hands you a rendered derivative. Not plain")
+    print("'Export…' unless 'Location Information' is ticked. Then run this again.")
+    sys.exit(1)
+
+
 def cmd_batches(args):
     """Batches submitted to the Batch API and not yet collected.
 
@@ -1485,17 +1677,31 @@ def cmd_remove(args):
     import r2
     creds = r2.config()
 
+    # Only objects actually on R2 need deleting. Most withheld records were never
+    # uploaded — publish only sends what it publishes — so without this the run
+    # spends a network round trip per record to delete something that isn't there.
+    hosted = [o for o in sel if not o.get("local_only") and o["file"] in manifest]
+
+    if hosted and not creds:
+        # The wrangler fallback spawns a Node process per object with a 120s
+        # timeout, and its OAuth expires and cannot refresh unattended. At any real
+        # batch size it looks exactly like a hang, which is how this command came to
+        # be interrupted halfway with nothing saved. Say so instead of starting.
+        print(f"\n{len(hosted)} of these have an image on R2, and R2 credentials are "
+              f"not set ({', '.join(r2.missing_vars())}).")
+        print("Deleting them would fall back to `npx wrangler`, one process per object,")
+        print("which at this size will look like a hang. Load the credentials first:")
+        print("\n    set -a && . ./.env && set +a")
+        print(f"\nOr pass --keep-images to remove the {len(sel)} record(s) and leave the")
+        print("images on R2 (they become unreferenced; `publish --prune-r2` clears those).")
+        sys.exit(1)
+
     gone = 0
     for o in sel:
-        if not o.get("local_only") and (creds or bucket):
+        if o in hosted and not args.keep_images:
             key = f"{prefix}/{o['file']}"
             try:
-                if creds:
-                    r2.delete(creds, key)
-                else:
-                    subprocess.run(["npx", "wrangler", "r2", "object", "delete",
-                                    f"{bucket}/{key}", "--remote"],
-                                   capture_output=True, text=True, timeout=120)
+                r2.delete(creds, key)
                 gone += 1
             except Exception as e:
                 print(f"  ! could not delete {key}: {e}")
@@ -1503,7 +1709,24 @@ def cmd_remove(args):
         thumb_path(o).unlink(missing_ok=True)
 
     drop = {o["file"] for o in sel}
-    save_obs([o for o in obs if o["file"] not in drop])
+    obs = [o for o in obs if o["file"] not in drop]
+    save_obs(obs)
+
+    # Removing records orphans the catalogue entries they created — an auto entry
+    # exists only because a photo matched it. Left behind, they are species the
+    # survey claims to have found with nothing standing behind them, which is how
+    # retiring the Orono batch left a regulated knotweed entry on a survey of an
+    # island it was never photographed on. Reconcile here so `remove` cannot leave
+    # that state, rather than relying on someone remembering the second command.
+    species = load(SPECIES_F, [])
+    dropped, merged, _ = reconcile(species, obs, apply=True)
+    if dropped or merged:
+        save(SPECIES_F, species)
+        save_obs(obs)
+        for sp, reason, _ in dropped:
+            print(f"  dropped catalogue entry {sp['id']} — {reason}")
+        for keep, _, losers, _ in merged:
+            print(f"  merged {', '.join(l['id'] for l in losers)} into {keep['id']}")
     save(R2_MANIFEST, manifest)
     # The location sidecar is written at ingest and never read, so an entry left
     # behind here is invisible — but the file is tracked, so orphans accumulate in
@@ -1994,6 +2217,15 @@ if __name__ == "__main__":
                     help=f"allow withdrawing more than {MAX_UNATTENDED_CLEARS} verifications at once")
     pl.set_defaults(func=cmd_sheet_pull)
     sub.add_parser("cache", help="what we've already paid to identify, and what it cost").set_defaults(func=cmd_cache)
+    cp = sub.add_parser("check-photos",
+                        help="do these files still carry a location and date? run BEFORE uploading")
+    cp.add_argument("folder")
+    cp.add_argument("--limit", type=int, help="how many of each to list (default 10)")
+    cp.set_defaults(func=cmd_check_photos)
+    ei = sub.add_parser("export-imap",
+                        help="field-verified invasive records as an iMapInvasives bulk-upload CSV")
+    ei.add_argument("--out", help="where to write the CSV (default: imapinvasives-export.csv)")
+    ei.set_defaults(func=cmd_export_imap)
     sub.add_parser("batches", help="batches submitted to the Batch API and not yet collected")\
        .set_defaults(func=cmd_batches)
     sub.add_parser("doctor", help="report what is configured and what still blocks a run").set_defaults(func=cmd_doctor)
@@ -2001,6 +2233,8 @@ if __name__ == "__main__":
     rm.add_argument("--batch", help="every record from this batch")
     rm.add_argument("--file", nargs="*", help="these specific filenames")
     rm.add_argument("--yes", action="store_true", help="actually delete (otherwise just previews)")
+    rm.add_argument("--keep-images", action="store_true",
+                    help="remove the records but leave their images on R2")
     rm.set_defaults(func=cmd_remove)
     pr = sub.add_parser("promote", help="move local-only records into the published set")
     pr.add_argument("--batch", help="only records from this batch")
