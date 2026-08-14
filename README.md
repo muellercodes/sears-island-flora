@@ -326,9 +326,30 @@ downloaded it — so the site printed "Photographed 2026-08-02" over a photograp
 whose date nobody knew. A survey that will not invent a species must not invent a
 date either.
 
-If you want the metadata preserved, ask contributors to share the original file —
-in Drive, *upload* the photo rather than pasting it into a message, and avoid
-"share a copy" options that re-encode.
+### Check before you upload
+
+```bash
+python3 scripts/plantdb.py check-photos ~/Desktop/sears-export
+```
+
+Reports which files still carry a location and a date, and exits non-zero if any
+do not. **Export two or three, run this, then upload the rest.**
+
+This exists because of an expensive surprise: 83 photographs reached the survey
+with their EXIF stripped, and it was invisible until after they had been ingested,
+thumbnailed and paid for. The stripped copies carried a *full-size but empty* EXIF
+block, so even the file size looked right.
+
+**On macOS, the metadata is lost on the way out of Photos, not on the way to
+Drive.** Dragging out of Photos.app hands you a rendered derivative rather than the
+file it is holding, so dragging to a Finder folder first does not help. Use:
+
+> **File → Export → Export Unmodified Original for N Photos…**
+
+Not drag-and-drop. Not plain *Export…* unless *Location Information* is ticked.
+The two export paths are distinguishable afterwards in the filename Photos
+generates — `..._1_105_c` came through with GPS intact, `..._4_5005_c` did not —
+but `check-photos` is the reliable test.
 
 ## Location precision
 

@@ -1455,6 +1455,59 @@ def cmd_export_imap(args):
     print("    chad.hammer@maine.gov / invasives.mnap@maine.gov")
 
 
+def cmd_check_photos(args):
+    """Do these files still carry a location and a date? Check BEFORE uploading.
+
+    Exists because of a real and expensive surprise: 83 photographs reached the
+    survey with their EXIF stripped, and it was only visible after they had been
+    ingested, thumbnailed and paid for. The loss happened at export, not at upload —
+    dragging out of macOS Photos hands you a rendered derivative rather than the
+    file it is holding, and plain "Export…" drops GPS unless Location Information is
+    ticked. Neither is visible by looking at the files, and the stripped copies
+    carry a full-size but empty EXIF block, so even the file size looks plausible.
+
+    So: export two or three, run this on the folder, upload the rest only once it
+    says they are good.
+    """
+    folder = pathlib.Path(os.path.expanduser(args.folder)).resolve()
+    if not folder.is_dir():
+        sys.exit(f"Not a folder: {folder}")
+    found = sorted(p for p in folder.rglob("*") if p.suffix.lower() in EXTS and p.is_file())
+    if not found:
+        sys.exit(f"No images found under {folder}")
+
+    limit = args.limit or 10
+    good, bad = [], []
+    for p in found:
+        e = exif_of(p)
+        (good if (e["lat"] and e["taken"]) else bad).append((p, e))
+
+    print(f"{len(found)} image(s) in {folder.name}\n")
+    for p, e in good[:limit]:
+        print(f"  ok    {p.name[:44]:<46} {e['taken'][:10]}  {e['lat']}, {e['lon']}")
+    if len(good) > limit:
+        print(f"  ... and {len(good) - limit} more good")
+    for p, e in bad[:limit]:
+        missing = " and ".join(m for m, v in (("location", e["lat"]), ("date", e["taken"])) if not v)
+        print(f"  BAD   {p.name[:44]:<46} no {missing}")
+    if len(bad) > limit:
+        print(f"  ... and {len(bad) - limit} more bad")
+
+    print(f"\n{len(good)} of {len(found)} carry both a location and a date.")
+    if not bad:
+        print("Safe to upload — every one of these can become a survey record.")
+        return
+    print(f"\n{len(bad)} would be ingested, identified, paid for, and then withheld:")
+    print("a photograph that cannot be placed or dated is not a survey record.")
+    print("\nIf these came out of macOS Photos, the metadata was lost on the way OUT of")
+    print("Photos, not on the way to Drive — so moving or re-uploading them will not")
+    print("bring it back. Go back to Photos and use:")
+    print("\n    File > Export > Export Unmodified Original for N Photos…")
+    print("\nNot drag-and-drop, which hands you a rendered derivative. Not plain")
+    print("'Export…' unless 'Location Information' is ticked. Then run this again.")
+    sys.exit(1)
+
+
 def cmd_batches(args):
     """Batches submitted to the Batch API and not yet collected.
 
@@ -2133,6 +2186,11 @@ if __name__ == "__main__":
                     help=f"allow withdrawing more than {MAX_UNATTENDED_CLEARS} verifications at once")
     pl.set_defaults(func=cmd_sheet_pull)
     sub.add_parser("cache", help="what we've already paid to identify, and what it cost").set_defaults(func=cmd_cache)
+    cp = sub.add_parser("check-photos",
+                        help="do these files still carry a location and date? run BEFORE uploading")
+    cp.add_argument("folder")
+    cp.add_argument("--limit", type=int, help="how many of each to list (default 10)")
+    cp.set_defaults(func=cmd_check_photos)
     ei = sub.add_parser("export-imap",
                         help="field-verified invasive records as an iMapInvasives bulk-upload CSV")
     ei.add_argument("--out", help="where to write the CSV (default: imapinvasives-export.csv)")
