@@ -983,6 +983,12 @@ function listHTML(gid, units) {
     <div class="pop-list">${rows}</div></div>`;
 }
 
+// NOTE: everything user-facing in here comes from `s` — the species this popup is
+// ABOUT — and never from o.species_id, the raw subject of the photograph. The two
+// differ whenever a find was matched through the background: the bedstraw pin is a
+// photograph whose subject is St John's Wort, and the "Full details" button read
+// past `s` to the subject, so it opened St John's Wort under a heading saying
+// Smooth Bedstraw.
 function detailHTML(gid, idx, n = 1) {
   const items = PIN[gid] || [];
   const o = items[idx];
@@ -1007,7 +1013,7 @@ function detailHTML(gid, idx, n = 1) {
       ${(o.verified || {}).notes
           ? `<div class="pm pnote"><b>In the field:</b> ${esc(o.verified.notes)}</div>`
           : (o.note ? `<div class="pm pnote">${esc(o.note)}</div>` : "")}
-      <button data-id="${esc(o.species_id)}" onclick="openSheet(this.dataset.id)">Full details</button>
+      <button data-id="${esc(s.id)}" onclick="openSheet(this.dataset.id)">Full details</button>
     </div></div>`;
 }
 
