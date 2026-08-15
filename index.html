@@ -110,7 +110,42 @@
     border-radius:10px; padding:13px 16px; margin:0 0 20px; font-size:14px; }
   .newflag h4 { margin:0 0 6px; color:var(--caution); font-size:13px; text-transform:uppercase; letter-spacing:.05em; }
   .newflag p { margin:0; color:var(--ink); }
+
+  /* The call for help. A lead only becomes a finding when somebody walks out and
+     looks, and most people who could do that will never open a terminal — so the
+     instructions have to live where they are already reading. */
+  .help { border:1px solid var(--accent); border-radius:12px; padding:14px 16px;
+    margin:0 0 20px; background:color-mix(in srgb, var(--accent) 8%, transparent); }
+  .help h4 { margin:0 0 4px; color:var(--accent); font-size:13px; font-weight:700;
+    text-transform:uppercase; letter-spacing:.05em; }
+  .help .lede { margin:0 0 12px; font-size:14px; color:var(--ink); }
+  .help h5 { margin:14px 0 6px; font-size:12.5px; text-transform:uppercase;
+    letter-spacing:.05em; color:var(--muted); }
+  /* .check and .rule, not .shots — `.shots` is already the photo grid in this
+     sheet, and reusing the name silently laid the checklist out in columns. */
+  .help ul { margin:0; padding-left:0; list-style:none; display:block; }
+  .help ul li { position:relative; padding:4px 0 4px 26px; font-size:14px; line-height:1.45; }
+  /* An empty box reads as a task in a way a bullet does not. */
+  .help ul.check li::before { content:""; position:absolute; left:0; top:8px;
+    width:14px; height:14px; border:1.5px solid var(--accent); border-radius:3px; }
+  .help ul.rule li::before { content:"✕"; position:absolute; left:2px; top:4px;
+    color:var(--toxic); font-size:12px; font-weight:700; }
+  .help .where { display:flex; flex-wrap:wrap; gap:8px; margin-top:6px; }
+  .help .where a { display:inline-block; padding:6px 11px; border-radius:8px;
+    border:1px solid var(--line); background:var(--panel); font-size:13px;
+    text-decoration:none; }
+  .help .where a:hover { border-color:var(--accent); }
+  .help .how { margin:14px 0 0; padding-top:12px; border-top:1px solid var(--line);
+    font-size:13.5px; color:var(--muted); }
+  .help .how b { color:var(--ink); }
   .pcount { font-size:12px; color:var(--muted); }
+  .patch { margin:14px 0 8px; font-size:12.5px; color:var(--muted);
+    padding-left:10px; border-left:2px solid var(--line); }
+  /* One card is one find. The badge says how many photographs stand behind it. */
+  .pcard { position:relative; }
+  .nphotos { position:absolute; top:8px; right:8px; z-index:1; font-size:11px;
+    font-weight:600; padding:3px 8px; border-radius:999px; color:var(--on-accent);
+    background:color-mix(in srgb, var(--deep) 72%, transparent); }
   .danger-flag { color:var(--toxic); font-weight:700; font-size:12px; }
 
   dialog { border:0; padding:0; background:transparent; max-width:920px; width:calc(100% - 32px); }
@@ -337,6 +372,32 @@ const SP = Object.fromEntries(DB.species.map(s => [s.id, s]));
 // card reading "Unidentified / Habitat shot" among the survey's actual findings.
 const SPECIES = DB.species.filter(s => s.id !== "unknown");
 const OBS = DB.observations;
+// Occurrences — one species growing in one place, computed at publish time so the
+// checklist a volunteer reads and the record the state receives describe the same
+// find. Grouped by species for the detail sheet.
+const OCC = {};
+(DB.occurrences || []).forEach(o => (OCC[o.species_id] ||= []).push(o));
+// Which occurrence a photograph belongs to, for a given species. Keyed by both,
+// because one photograph can evidence several species — its subject plus anything
+// identified behind it — and belongs to a different patch of each.
+const OCC_OF = {};
+(DB.occurrences || []).forEach(x =>
+  x.files.forEach(f => (OCC_OF[`${x.species_id}|${f}`] = x)));
+const occOf = o => OCC_OF[`${spOf(o)}|${o.file}`] || null;
+
+// Collapse photographs into the things they are photographs OF. Seven shots of one
+// willowherb patch are one find, and showing them as seven is exactly the
+// conflation the occurrence model exists to end.
+function byOccurrence(records) {
+  const seen = new Map();
+  records.forEach(o => {
+    const x = occOf(o);
+    const k = x ? `${spOf(o)}@${x.lat},${x.lon}` : `solo|${o.file}`;
+    if (seen.has(k)) seen.get(k).items.push(o);
+    else seen.set(k, { anchor: o, items: [o], occ: x });
+  });
+  return [...seen.values()];
+}
 const byS = {};       // photos where this species is the main subject
 const alsoS = {};     // photos where it's visible but not the subject — still a real record of it growing there
 const spOf = o => o.effective_species_id || o.species_id;   // human verdict wins
@@ -468,8 +529,10 @@ function render() {
   } else {
     const ok = new Set(list.map(s => s.id));
     const shots = OBS.filter(o => ok.has(o.species_id));
-    $("count").textContent = `${shots.length} photos`;
-    $("view").innerHTML = shots.length ? `<div class="photo-grid">${shots.map(photoHTML).join("")}</div>`
+    const units = byOccurrence(shots);
+    $("count").textContent = `${units.length} find${units.length === 1 ? "" : "s"} · ${shots.length} photos`;
+    $("view").innerHTML = units.length
+      ? `<div class="photo-grid">${units.map(u => photoHTML(u.anchor, u.items.length)).join("")}</div>`
       : `<p class="empty">Nothing matches that.</p>`;
     $("view").querySelectorAll(".pcard").forEach(c => c.onclick = () => openSheet(c.dataset.id));
   }
@@ -498,9 +561,10 @@ function cardHTML(s) {
     </div></button>`;
 }
 
-function photoHTML(o) {
+function photoHTML(o, n = 1) {
   const s = SP[o.species_id] || SP.unknown;
   return `<button class="pcard" data-id="${o.species_id}">
+    ${n > 1 ? `<span class="nphotos">${n} photos of this patch</span>` : ""}
     <img loading="lazy" src="${esc(thumbSrc(o))}" alt="${esc(s.common)}">
     <div class="cap"><div class="n">${esc(s.common)}</div>
       <div class="t">${esc(whenWhere(o))} · <span class="conf-${o.confidence}">${esc(o.confidence)}</span></div>
@@ -627,11 +691,14 @@ function drawMarkers() {
   markers.clearLayers();
   PIN = [];
   const z = map.getZoom();
+  // Two levels, and the order matters. An occurrence is one find at ANY zoom, so it
+  // is collapsed before the pixel test — otherwise seven photographs two metres
+  // apart split back into seven pins as soon as you zoom in far enough.
   const groups = [];
-  mapped.forEach(o => {
-    const p = map.project(llOf(o), z);
+  byOccurrence(mapped).forEach(u => {
+    const p = map.project(llOf(u.anchor), z);
     const g = groups.find(g => g.p.distanceTo(p) < MERGE_PX);
-    if (g) g.items.push(o); else groups.push({ p, items: [o] });
+    if (g) g.items.push(...u.items); else groups.push({ p, items: [...u.items] });
   });
 
   groups.forEach(g => {
@@ -764,6 +831,42 @@ function sheetBack() {
   if (prev) openSheet(prev, true);
 }
 
+// Everything a volunteer needs to settle one of these without ever opening a
+// terminal: where it is, what to photograph, what would rule it out, and what to
+// do with the pictures afterwards. Only shown where it is actually actionable —
+// something regulated or invasive that nobody has checked yet.
+function helpHTML(s) {
+  const pending = (OCC[s.id] || []).filter(o => !o.confirmed);
+  const urgent = ["regulated", "invasive"].includes(statusOf(s));
+  if (!pending.length || !urgent) return "";
+
+  const marks = (s.id_marks || []).map(m => `<li>${esc(m)}</li>`).join("");
+  const rule = (s.lookalikes || []).map(m => `<li>${esc(m)}</li>`).join("");
+  const spots = pending.map(o => {
+    const n = o.n === 1 ? "1 photo" : `${o.n} photos`;
+    return `<a href="https://www.google.com/maps/search/?api=1&query=${o.lat},${o.lon}"
+       target="_blank" rel="noopener">${o.lat.toFixed(5)}, ${o.lon.toFixed(5)} · ${n}</a>`;
+  }).join("");
+
+  return `<div class="help">
+    <h4>${statusOf(s) === "regulated" ? "Regulated — needs checking" : "Needs checking"}</h4>
+    <p class="lede">This was identified from a photograph and <b>nobody has confirmed it
+      on the ground</b>. If you are on the island, you can settle it.</p>
+
+    <h5>Where</h5>
+    <div class="where">${spots}</div>
+
+    ${marks ? `<h5>Photograph each of these</h5><ul class="check">${marks}</ul>` : ""}
+    ${rule ? `<h5>Rule out — if one of these fits better, say so</h5>
+              <ul class="rule">${rule}</ul>` : ""}
+
+    <p class="how"><b>Then add your photos to the shared folder.</b> Include something
+      for scale — a hand, a boot, a pen — and take a wide shot as well as the close-ups.
+      Pictures taken within about 10 m of the spot join this record automatically, so
+      leave location services on and they will land in the right place.</p>
+  </div>`;
+}
+
 function openSheet(id, isBack = false) {
   const s = SP[id]; if (!s) return;
   // Arriving from the list or the map is a fresh start, so the trail resets HERE
@@ -802,6 +905,7 @@ function openSheet(id, isBack = false) {
       </div>
     </div>
     <div class="sheet-body">
+      ${helpHTML(s)}
       ${isAuto(s) ? `<div class="newflag"><h4>AI-identified</h4><p>This entry was written
          automatically from the photo — including the edibility verdict below. Have an adult who
          knows plants confirm it before anyone eats anything.</p></div>` : ""}
@@ -813,7 +917,22 @@ function openSheet(id, isBack = false) {
       ${sec("How to know it", ul(s.id_marks))}
       ${sec("Cautions", ul(s.cautions))}
       ${sec("Lookalikes to rule out", ul(s.lookalikes))}
-      ${shots.length ? sec("Photos", shotGrid(shots, s)) : ""}
+      ${shots.length ? sec("Photos", ((gs) => gs.map(u => {
+          const x = u.occ, many = u.items.length > 1 || gs.length > 1;
+          const when = x && x.first_seen !== x.last_seen
+            ? `${x.first_seen} – ${x.last_seen}` : (x ? x.first_seen : "");
+          // One heading per patch, so a run of near-identical shots reads as
+          // repeated evidence of one find rather than several finds.
+          // Every patch is labelled as soon as there is more than one, or a lone
+          // photograph after a headed group reads as part of that group.
+          return (many && x ? `<p class="patch">${u.items.length} photograph${
+              u.items.length === 1 ? "" : "s"} of one patch at ${
+              x.lat.toFixed(5)}, ${x.lon.toFixed(5)}${
+              u.items.length > 1 && x.spread_m >= 1
+                ? ` · spread ~${Math.round(x.spread_m)} m` : ""}${
+              when ? ` · ${esc(when)}` : ""}</p>` : "")
+            + shotGrid(u.items, s);
+        }).join(""))(byOccurrence(shots))) : ""}
       ${also.length ? sec("Also seen in", `<p style="color:var(--muted);margin:0 0 12px;font-size:13.5px">
          ${shots.length ? "Photographed as part of another subject" : "No photo of its own yet"} — but visible
          in ${also.length === 1 ? "this shot" : "these shots"}, so ${also.length === 1 ? "it's" : "they're"}

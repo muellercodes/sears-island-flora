@@ -10,7 +10,8 @@ Field Guide database tool.
 Ingest is safe to re-run: photos already in the library (matched by content hash)
 are skipped, so you can point it at the same folder repeatedly.
 """
-import argparse, hashlib, json, os, pathlib, re, shutil, subprocess, sys, datetime
+import argparse, errno, hashlib, json, math, os, pathlib, re, shutil, subprocess, sys, datetime
+from urllib.parse import quote
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 PHOTOS, THUMBS, DATA = ROOT / "photos", ROOT / "thumbs", ROOT / "data"
@@ -227,6 +228,127 @@ def recorded_species(species, obs):
         ref.add(effective_species(o))
         ref.update(o.get("also") or [])
     return [s for s in species if s["id"] in ref]
+
+
+# --- Occurrences ------------------------------------------------------------
+# An observation is one photograph. An OCCURRENCE is one species growing in one
+# place — which is what a land manager treats, what a state database records, and
+# what someone walks out to check. Seven photographs of one willowherb patch are
+# seven observations and one occurrence, and the difference matters: submitted per
+# photograph they would read as seven infestations.
+#
+# Derived from the records rather than stored, like everything else here, so a
+# photograph taken next year at the same spot joins the occurrence by being where
+# it is. There is no membership to maintain and nothing to forget to update.
+#
+# 10 metres, from the data: photographs of one patch sit 0–2.1 m apart, and the
+# nearest genuinely separate site is 10.7 m away. The threshold sits in the gap.
+OCCURRENCE_RADIUS_M = 10
+
+
+def metres(a, b):
+    """Distance between two records in metres. Flat-earth, which at this scale is
+    accurate to well under the GPS error it is comparing."""
+    la1, lo1 = float(a["lat"]), float(a["lon"])
+    la2, lo2 = float(b["lat"]), float(b["lon"])
+    dy = (la2 - la1) * 111_320
+    dx = (lo2 - lo1) * 111_320 * math.cos(math.radians((la1 + la2) / 2))
+    return math.hypot(dx, dy)
+
+
+def _located(o):
+    return bool(o.get("lat") and o.get("lon"))
+
+
+def occurrences(obs, radius=OCCURRENCE_RADIUS_M):
+    """Every (species, place) pair the survey has evidence for.
+
+    A photograph counts towards a species if it is the subject OR if the species
+    was identified in the background — a plant caught behind the subject is still
+    a real record of it growing at that spot, and for an invasive it may be the
+    only record there is.
+
+    Grouping is single-link: a photograph joins a group if it is within `radius`
+    of ANY member, so a straggling thicket photographed along its length chains
+    into one occurrence instead of splitting at every stride.
+    """
+    by_species = {}
+    for o in obs:
+        if not _located(o) or o.get("rejected"):
+            continue
+        for sid in {effective_species(o), *(o.get("also") or [])}:
+            if sid != "unknown":
+                by_species.setdefault(sid, []).append(o)
+
+    out = []
+    for sid, records in by_species.items():
+        groups = []
+        for o in sorted(records, key=lambda r: r.get("taken", "")):
+            touching = [g for g in groups if any(metres(o, m) <= radius for m in g)]
+            if touching:
+                first = touching[0]
+                first.append(o)
+                for other in touching[1:]:      # this photo bridges two groups
+                    first.extend(other)
+                    groups.remove(other)
+            else:
+                groups.append([o])
+        for g in groups:
+            g.sort(key=lambda r: r.get("taken", ""))
+            out.append(_occurrence(sid, g))
+    out.sort(key=lambda x: (RANK.get(x["origin_status"], 9), x["species_id"]))
+    return out
+
+
+def occurrence_payload(obs):
+    """Occurrences, trimmed to what the site needs to ask someone for help.
+
+    The app cannot recompute this: clustering lives in one place so the checklist a
+    volunteer reads and the record the state receives describe the same find.
+    """
+    return [{"species_id": x["species_id"],
+             "lat": round(x["lat"], 6), "lon": round(x["lon"], 6),
+             "n": len(x["members"]), "spread_m": round(x["spread_m"], 1),
+             "first_seen": x["first_seen"], "last_seen": x["last_seen"],
+             "confirmed": x["confirmed"], "confirmed_by": x["confirmed_by"],
+             "checked_on": x["checked_on"],
+             "confirming_photos": len(x["confirming_photos"]),
+             "files": [o["file"] for o in x["members"]]}
+            for x in occurrences(obs)]
+
+
+def _occurrence(sid, members):
+    """One occurrence, summarised. `anchor` is the earliest photograph — the one to
+    name when confirming, and stable while it exists."""
+    species = {s["id"]: s for s in enriched_species()}.get(sid, {})
+    verdicts = [o["verified"] for o in members
+                if (o.get("verified") or {}).get("status") in ("confirmed", "corrected")]
+    dates = [o["taken"][:10] for o in members if o.get("taken")]
+    # A photograph taken on or after the day someone confirmed it is the evidence
+    # that confirmation rests on. Recorded, never required — a steward who went and
+    # looked has still been there, phone or no phone.
+    checked_on = min((v.get("date", "") for v in verdicts), default="")
+    return {
+        "species_id": sid,
+        "common": species.get("common", sid),
+        "scientific": species.get("scientific", ""),
+        "origin_status": species.get("origin_status", "unknown"),
+        "origin_note": species.get("origin_note", ""),
+        "id_marks": species.get("id_marks") or [],
+        "lookalikes": species.get("lookalikes") or [],
+        "members": members,
+        "anchor": members[0],
+        "lat": sum(float(o["lat"]) for o in members) / len(members),
+        "lon": sum(float(o["lon"]) for o in members) / len(members),
+        "spread_m": max((metres(a, b) for a in members for b in members), default=0.0),
+        "first_seen": min(dates, default=""),
+        "last_seen": max(dates, default=""),
+        "confirmed": bool(verdicts),
+        "confirmed_by": verdicts[0].get("by") if verdicts else "",
+        "checked_on": checked_on,
+        "confirming_photos": [o for o in members
+                              if checked_on and o.get("taken", "")[:10] >= checked_on],
+    }
 
 
 def enriched_species():
@@ -562,6 +684,7 @@ def cmd_build(args):
     # count as recorded here — locally they are exactly what you are checking.
     species = recorded_species(species, obs)
     payload = {"species": species, "observations": obs,
+               "occurrences": occurrence_payload(obs),
                "generated": datetime.datetime.now().strftime("%Y-%m-%d %H:%M")}
     notice = load(PUBCFG_F, {}).get("notice")
     if notice:
@@ -769,6 +892,9 @@ def cmd_publish(args):
         o["thumb"] = f"{base}/{prefix}/{o['file']}" if base else f"thumbs/{o['file']}"
     species = recorded_species(enriched_species(), kept)
     payload = {"species": species, "observations": kept,
+               # Built from the PUBLISHED set: a withheld photograph is not evidence
+               # anyone can act on, so it must not appear in a call for help either.
+               "occurrences": occurrence_payload(kept),
                "generated": datetime.datetime.now().strftime("%Y-%m-%d %H:%M")}
     if cfg.get("notice"):
         payload["notice"] = cfg["notice"]
@@ -1373,35 +1499,45 @@ def cmd_export_imap(args):
     import csv
     obs = [o for o in load_obs() if not o.get("local_only")]
     species = {s["id"]: s for s in enriched_species()}
+    base = load(PUBCFG_F, {})
+    url = (base.get("r2_public_base") or "").rstrip("/")
+    prefix = (base.get("r2_prefix") or "thumbs").strip("/")
 
+    # One row per OCCURRENCE, not per photograph. iMapInvasives records a species
+    # observed at one location on one date, so seven photographs of one willowherb
+    # patch are one record there — submitting seven would report seven infestations
+    # to the state and overstate what is on the ground.
     rows, blocked = [], []
-    for o in obs:
-        sp = species.get(effective_species(o))
-        why = imap_blocker(o, sp)
+    for x in occurrences(obs):
+        sp = species.get(x["species_id"])
+        confirmed = next((o for o in x["members"]
+                          if (o.get("verified") or {}).get("status") in ("confirmed", "corrected")),
+                         None)
+        why = imap_blocker(confirmed or x["anchor"], sp)
         if why:
-            blocked.append((o, why))
+            blocked.append((x, why))
             continue
-        v = o["verified"]
-        base = load(PUBCFG_F, {})
-        url = (base.get("r2_public_base") or "").rstrip("/")
-        prefix = (base.get("r2_prefix") or "thumbs").strip("/")
-        notes = " ".join(x for x in (o.get("note"), v.get("notes")) if x)
+        v = confirmed["verified"]
+        notes = " ".join(t for t in (confirmed.get("note"), v.get("notes")) if t)
+        if len(x["members"]) > 1:
+            notes = (f"{len(x['members'])} photographs over ~{x['spread_m']:.0f} m, "
+                     f"{x['first_seen']} to {x['last_seen']}. ") + notes
         rows.append({
-            # The content hash is the photo's real identity and never changes, which
-            # is what a Source Unique ID is for — resubmitting the same record must
-            # not create a second one.
-            "Source Unique ID": o.get("hash") or o["id"],
+            # The confirmed photograph's content hash: stable for the life of the
+            # project, which is what a Source Unique ID is for — resubmitting the
+            # same occurrence must not create a second record at the state end.
+            "Source Unique ID": confirmed.get("hash") or confirmed["id"],
             "Species": sp.get("scientific", ""),
-            "Date": (v.get("date") or o.get("taken", ""))[:10],
+            "Date": (v.get("date") or confirmed.get("taken", ""))[:10],
             "Observer": v["by"],
-            "Latitude": o["lat"],
-            "Longitude": o["lon"],
+            "Latitude": f"{x['lat']:.6f}",
+            "Longitude": f"{x['lon']:.6f}",
             "Common Name": sp.get("common", ""),
             "Comments": notes[:900],
-            "Photo URL": f"{url}/{prefix}/{o['file']}" if url else "",
+            "Photo URL": f"{url}/{prefix}/{confirmed['file']}" if url else "",
         })
 
-    print(f"{len(rows)} record(s) are eligible for iMapInvasives.\n")
+    print(f"{len(rows)} occurrence(s) are eligible for iMapInvasives.\n")
     for r in rows[:15]:
         print(f"  {r['Species']:<32} {r['Date']}  {r['Latitude']}, {r['Longitude']}"
               f"  obs. {r['Observer']}")
@@ -1410,7 +1546,7 @@ def cmd_export_imap(args):
 
     if blocked:
         from collections import Counter
-        print(f"\n{len(blocked)} record(s) not eligible:")
+        print(f"\n{len(blocked)} occurrence(s) not eligible:")
         for why, n in Counter(w for _, w in blocked).most_common():
             print(f"  {n:>3}  {why}")
 
@@ -1453,6 +1589,84 @@ def cmd_export_imap(args):
     print("    from NatureServe's published spec; the optional ones are a guess.")
     print("  * Maine's administrator is the Maine Natural Areas Program:")
     print("    chad.hammer@maine.gov / invasives.mnap@maine.gov")
+
+
+def cmd_fieldwork(args):
+    """A walking list: which occurrences need checking, and what would settle each.
+
+    The survey's leads are only worth anything if someone can act on them, and
+    "go and look at this" is not actionable. What a person needs standing in front
+    of the plant is the feature that decides it and the thing it might be instead —
+    both of which the catalogue already holds. This assembles them per occurrence,
+    nearest thing to a printable page, urgent species first.
+    """
+    obs = [o for o in load_obs() if not o.get("local_only")]
+    occs = [x for x in occurrences(obs) if not x["confirmed"]]
+    if args.status:
+        occs = [x for x in occs if x["origin_status"] == args.status]
+    elif not args.all:
+        occs = [x for x in occs if x["origin_status"] in ("regulated", "invasive")]
+    if not occs:
+        print("Nothing outstanding." if args.status or args.all else
+              "No unconfirmed regulated or invasive occurrences. "
+              "Use --all to list everything awaiting a field check.")
+        return
+
+    print(f"{len(occs)} occurrence(s) to check, most urgent first.\n")
+    print("Take the photographs BEFORE you touch anything, and include something for")
+    print("scale — a hand, a boot, a pen. A photo of the whole plant plus one close-up")
+    print("of the feature named below is usually enough to settle an identification.\n")
+
+    for n, x in enumerate(occs, 1):
+        flag = {"regulated": "** REGULATED — Do Not Sell list **",
+                "invasive": "* invasive *"}.get(x["origin_status"], x["origin_status"])
+        print("=" * 72)
+        print(f"{n}. {x['common']}  ({x['scientific']})   {flag}")
+        print(f"   {x['lat']:.6f}, {x['lon']:.6f}"
+              + (f"   spread ~{x['spread_m']:.0f} m" if x["spread_m"] > 1 else "")
+              + f"   {len(x['members'])} photo(s)")
+        seen = x["first_seen"] + (f" – {x['last_seen']}" if x["last_seen"] != x["first_seen"] else "")
+        print(f"   photographed {seen}")
+        print(f"   maps.apple.com/?ll={x['lat']:.6f},{x['lon']:.6f}&q={quote(x['common'])}")
+        if x["origin_note"]:
+            print(f"\n   Why it matters: {x['origin_note']}")
+
+        note = (x["anchor"].get("note") or "").strip()
+        if note:
+            print(f"\n   What the photo showed: {note[:300]}")
+
+        if x["id_marks"]:
+            print("\n   CONFIRM by photographing each of these:")
+            for m in x["id_marks"]:
+                print(f"     [ ] {m}")
+        if x["lookalikes"]:
+            print("\n   RULE OUT — if any of these fits better, correct it rather than confirm:")
+            for m in x["lookalikes"]:
+                print(f"     - {m}")
+
+        print(f"\n   Then:  plantdb.py confirm --file {x['anchor']['file']} \\")
+        print(f"            --by \"Your Name\" --status confirmed --notes \"what you saw\"")
+        print("   Photographs you take there join this occurrence automatically —")
+        print(f"   anything within {OCCURRENCE_RADIUS_M} m of it is the same find.\n")
+
+
+def cmd_occurrences(args):
+    """Every (species, place) the survey has evidence for."""
+    obs = [o for o in load_obs() if not o.get("local_only")]
+    occs = occurrences(obs)
+    if not args.all:
+        occs = [x for x in occs if x["origin_status"] in ("regulated", "invasive", "unknown")]
+    multi = sum(1 for x in occs if len(x["members"]) > 1)
+    print(f"{len(occs)} occurrence(s), {multi} with more than one photograph "
+          f"(grouped within {OCCURRENCE_RADIUS_M} m).\n")
+    for x in occs:
+        state = "confirmed" if x["confirmed"] else "unverified"
+        if x["confirmed"]:
+            state += f" by {x['confirmed_by']}"
+            state += (f", {len(x['confirming_photos'])} photo(s) from the check"
+                      if x["confirming_photos"] else ", no photo from the check")
+        print(f"  {x['origin_status']:<11} {x['common'][:32]:<34} {x['lat']:.5f}, {x['lon']:.5f}"
+              f"  {len(x['members'])} photo(s)  [{state}]")
 
 
 def cmd_check_photos(args):
@@ -2150,7 +2364,24 @@ def cmd_serve(args):
             pass
 
     handler = functools.partial(H, directory=str(ROOT))
-    srv = http.server.ThreadingHTTPServer(("127.0.0.1", args.port), handler)
+    try:
+        srv = http.server.ThreadingHTTPServer(("127.0.0.1", args.port), handler)
+    except OSError as e:
+        if e.errno != errno.EADDRINUSE:
+            raise
+        # Almost always an earlier `serve` still running — this one is easy to
+        # start and easy to forget, and the bare traceback names neither the
+        # command that took the port nor a way out of it.
+        who = subprocess.run(["lsof", "-nP", f"-iTCP:{args.port}", "-sTCP:LISTEN"],
+                             capture_output=True, text=True).stdout.strip().splitlines()
+        print(f"Port {args.port} is already in use.")
+        for line in who[1:3]:
+            parts = line.split()
+            print(f"  held by pid {parts[1]} ({parts[0]})")
+        if len(who) > 1:
+            print(f"\nStop it:      kill {who[1].split()[1]}")
+        print(f"Or pick another port:   plantdb.py serve --port {args.port + 1}")
+        sys.exit(1)
     print(f"Serving {ROOT.name} at http://localhost:{args.port}/   (ctrl-c to stop)")
     print("Caching is disabled — just reload after a rebuild.")
     try:
@@ -2217,6 +2448,13 @@ if __name__ == "__main__":
                     help=f"allow withdrawing more than {MAX_UNATTENDED_CLEARS} verifications at once")
     pl.set_defaults(func=cmd_sheet_pull)
     sub.add_parser("cache", help="what we've already paid to identify, and what it cost").set_defaults(func=cmd_cache)
+    fw = sub.add_parser("fieldwork", help="what to go and check, and what would settle each")
+    fw.add_argument("--status", help="only this regulatory status")
+    fw.add_argument("--all", action="store_true", help="include natives and undetermined")
+    fw.set_defaults(func=cmd_fieldwork)
+    oc = sub.add_parser("occurrences", help="species-and-place groupings, not one row per photo")
+    oc.add_argument("--all", action="store_true", help="include natives and introduced")
+    oc.set_defaults(func=cmd_occurrences)
     cp = sub.add_parser("check-photos",
                         help="do these files still carry a location and date? run BEFORE uploading")
     cp.add_argument("folder")

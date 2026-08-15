@@ -658,6 +658,8 @@ python3 scripts/plantdb.py ingest DIR --local   # ...but never commit or publish
 python3 scripts/plantdb.py invasives    # survey report by regulatory status, with locations
 python3 scripts/plantdb.py invasives --all   # include natives
 python3 scripts/plantdb.py batches      # batches submitted and not yet collected
+python3 scripts/plantdb.py occurrences  # species-and-place groupings, not one row per photo
+python3 scripts/plantdb.py fieldwork    # what to go and check, and what would settle each
 python3 scripts/plantdb.py export-imap  # field-verified invasives, as an iMapInvasives CSV
 python3 scripts/plantdb.py reconcile    # merge duplicate species, drop non-answers
 python3 scripts/plantdb.py verify       # data-quality check
@@ -680,6 +682,60 @@ Forked from a family foraging guide. Four inversions, each for a reason:
 
 Foraging notes are retained as secondary detail — they're accurate and occasionally
 useful — but they are not what this site is for.
+
+## Occurrences: one species, one place
+
+An observation is a photograph. An **occurrence** is a thing growing somewhere —
+what a land manager treats, what a state database records, and what someone walks
+out to check.
+
+```bash
+python3 scripts/plantdb.py occurrences        # regulated, invasive and undetermined
+python3 scripts/plantdb.py occurrences --all  # everything
+```
+
+Photographs of one species within **10 metres** of each other are one occurrence.
+That number is empirical, not a guess: in the first real survey batch, photographs
+of a single patch sat 0–2.1 m apart and the nearest genuinely separate site was
+10.7 m away, so the threshold sits in the gap.
+
+Grouping is **single-link** — a photograph joins if it is within 10 m of *any*
+member — so a stand walked along its length chains into one occurrence instead of
+splitting at every stride. It is derived from the records, never stored, so a
+photograph taken next year at the same spot joins by being where it is. There is no
+membership to maintain and nothing to forget to update.
+
+A background sighting counts. A plant caught behind the subject is a real record of
+it growing there, and for an invasive it may be the only record there is.
+
+**This is also a correctness fix for the state export.** iMapInvasives records a
+species observed at one location on one date, so `export-imap` writes one row per
+occurrence. Submitted per photograph, seven shots of one willowherb patch would
+report seven infestations to Maine.
+
+## Going back to check: `fieldwork`
+
+```bash
+python3 scripts/plantdb.py fieldwork          # regulated and invasive, urgent first
+python3 scripts/plantdb.py fieldwork --all    # everything unconfirmed
+```
+
+"Go and look at this" is not actionable. What a person needs standing in front of
+the plant is the feature that decides it and the thing it might be instead — both
+of which the catalogue already holds. `fieldwork` assembles them per occurrence
+into something you can carry: coordinates and a maps link, what the photograph
+showed, a checklist of features to photograph, the lookalikes to rule out, and the
+exact `confirm` command to run afterwards.
+
+Photographs taken there join the occurrence automatically, by location. Ones dated
+on or after the day of the check are recorded as the evidence the confirmation
+rests on — **recorded, never required.** A steward who went and looked has been
+there, phone or no phone, and refusing the verdict would lose the field check
+entirely.
+
+A `rejected` verdict removes the occurrence outright rather than leaving it
+unconfirmed: a person stood there and said it is not that species, so it should
+leave the map and the fieldwork list, not linger as something still to check.
 
 ## Getting records to the state — iMapInvasives
 
