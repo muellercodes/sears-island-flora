@@ -3,6 +3,8 @@
  "r2_public_base": "https://pub-f75027cb6c72486eab43e77b500919ca.r2.dev",
  "r2_prefix": "thumbs",
  "r2_bucket": "sears-island-flora",
+ "_contributor_comment": "Where a signed-in contributor submits field checks, surplus marks and photographs. Not a secret — the deploy runner reads it to build the page, exactly like r2_public_base, and holds no credential either way. Leave it empty and the site is the read-only survey it was before. Set it to the deployed Worker's URL, e.g. https://sears-island-contributors.<subdomain>.workers.dev",
+ "contributor_endpoint": "",
  "survey_area": {
   "name": "Sears Island",
   "_comment": "Approximate bounding box covering the island, its causeway and immediate shoreline — deliberately generous, so widen or tighten as you learn the ground. enforce: 'auto' means the check stays advisory until the first in-area record arrives, then becomes binding.",

@@ -108,6 +108,24 @@ jobs:
           GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
         run: python3 scripts/plantdb.py sheet-pull --yes
 
+      # The other human channel, drained on the same tick and for the same reason:
+      # a steward who spends an afternoon confirming records on their phone should
+      # not have that work sit unpublished until a photograph happens to arrive.
+      #
+      # The token here is scoped to the `pipeline` role, which may collect the
+      # inbox and nothing else — it cannot record a field check, mark a photograph
+      # surplus or upload. Nothing that runs unattended can manufacture the one
+      # claim this survey asks anyone to believe.
+      #
+      # Also a warning rather than a failure: identifications further down this
+      # job are already paid for, and a Worker that is down must not cost them.
+      - name: Take in contributor submissions
+        continue-on-error: true
+        env:
+          SIF_WORKER_URL: ${{ secrets.SIF_WORKER_URL }}
+          SIF_PIPELINE_TOKEN: ${{ secrets.SIF_PIPELINE_TOKEN }}
+        run: python3 scripts/plantdb.py inbox-pull --yes
+
       - name: Ingest new photos from the shared Drive folder
         if: env.MODE == 'submit'
         env:

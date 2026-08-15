@@ -55,7 +55,11 @@ def blur(v):
 
 
 def load(p, default):
-    return json.load(open(p)) if p.exists() else default
+    if not p.exists():
+        return default
+    with open(p) as f:            # closed explicitly: CPython's refcount would get
+        return json.load(f)       # there anyway, but it warns, and the noise lands
+                                  # in every test run.
 
 
 def save(p, obj):
@@ -92,6 +96,145 @@ VERIFY_STATUS = ("confirmed", "corrected", "rejected", "revisit")
 MAX_UNATTENDED_CLEARS = 2
 
 
+# --- Who may do what --------------------------------------------------------
+# Contributors sign in to the site and write through a Cloudflare Worker, which
+# drops their submissions into an R2 inbox for the pipeline to drain. The Worker
+# checks these capabilities before accepting anything — and `inbox-pull` checks
+# them AGAIN before applying it.
+#
+# That second check is not belt-and-braces pedantry. The project's central claim
+# is that `verified` records only a real human field check, and a Worker is a
+# deployed artefact that can be redeployed, misconfigured or compromised without
+# this repository changing. Re-deciding here means the rule that a contributor
+# cannot write a verification lives in the tested, reviewed, version-controlled
+# half of the system, and no bug on the network can move it.
+#
+# THIS TABLE IS AUTHORITATIVE. worker/index.js carries a copy so it can refuse
+# early with a useful message; tests/test_contributor_inbox.py reads that file
+# and fails if the two ever drift apart.
+ROLES = ("contributor", "verifier", "admin", "pipeline")
+
+CAPABILITIES = {
+    # Add a photograph to the survey. Every signed-in role can: the survey wants
+    # more photographs from more people, and an upload is screened, dated, located
+    # and identified by the same pipeline as any other, so a bad one costs nothing
+    # a Drive drop would not have cost.
+    "upload": ("contributor", "verifier", "admin"),
+    # Record that a person stood in front of the plant. This is the one the whole
+    # project turns on, so it is deliberately the narrower grant.
+    "verify": ("verifier", "admin"),
+    # Mark a photograph surplus within one find. A judgement about which frame
+    # settles an identification — near-identical shots are often close-ups of the
+    # diagnostic feature — so it sits with the people who curate the survey.
+    "redundant": ("admin",),
+    # Undo or overwrite something another person recorded.
+    "override": ("admin",),
+    # Collect the inbox and answer for what happened to it. `pipeline` is the role
+    # the unattended run holds, and it is the ONLY thing it may do: the token
+    # sitting in GitHub Actions secrets cannot record a field check, mark a
+    # photograph surplus or upload anything. It can only carry out what a person
+    # already decided. Given that `verified` is the project's central claim, the
+    # credential that runs every night unattended should not be able to manufacture
+    # one.
+    "drain": ("pipeline", "admin"),
+}
+
+
+def may(role, capability):
+    """Whether this role may do this thing. Unknown role or capability: no."""
+    return role in CAPABILITIES.get(capability, ())
+
+
+# --- Surplus photographs ----------------------------------------------------
+# Patches get photographed five to ten times. Grouping already keeps the listings
+# honest (`one_per_patch`), but every one of those frames is still carried: hosted
+# on R2, shipped in the site's data, shown in the species page's photo strip.
+#
+# A mark says: within THIS find — this species, this patch — this frame is surplus
+# to the one that represents it. It is deliberately scoped that way rather than
+# being a property of the image, because the same photograph can be surplus for
+# the willowherb it is the seventh shot of and the only record there is of the
+# bittersweet behind it.
+#
+# It is deliberately NOT a perceptual hash. Two frames a difference algorithm
+# calls identical are routinely a habit shot and a close-up of the one feature
+# that settles the identification, and throwing the second away silently destroys
+# the evidence for the first. A person decides, and signs it.
+#
+# Nothing is deleted. The original stays in photos/, the record stays in
+# observations.json with the mark on it, and the count of what the find is built
+# on stays truthful. Unmark it and the next publish carries it again.
+def is_redundant(o):
+    """True when a person has marked this photograph surplus within its find."""
+    r = o.get("redundant") or {}
+    return bool(r.get("by") and r.get("of") and r.get("species_id"))
+
+
+def redundancy_problem(r, o, rep, species_ids, obs=None):
+    """Why this mark is not one the survey will act on, or None if it is.
+
+    Checked at the boundary — by `inbox-pull` before applying, and by `verify`
+    on everything already stored — for the same reason `verification_problem`
+    is: a rule that decides what to accept must be one function, or the thing
+    telling a contributor their mark landed will drift from the thing acting on
+    it.
+
+    The two scoping tests are what make a mark mean "surplus within this find"
+    rather than "hide this image". Both are re-derived from the records as they
+    stand now, so a mark stops applying if a re-identification moves either
+    photograph to a different species, or `refresh-gps` moves one out of the
+    patch. It lapses rather than quietly going on hiding a photograph of
+    something else.
+    """
+    if not r.get("by"):
+        return "needs a name — an unattributed judgement is not one"
+    if not r.get("of"):
+        return "needs the photograph it defers to"
+    if rep is None:
+        return f"defers to '{r['of']}', which is not a record here"
+    if rep["file"] == o["file"]:
+        return "a photograph cannot be surplus to itself"
+    if is_redundant(rep):
+        return (f"defers to '{rep['file']}', which is itself marked surplus — "
+                "one photograph has to represent the find")
+    sid = r.get("species_id")
+    if not sid:
+        return "needs the species it is surplus for"
+    if sid not in species_ids:
+        return f"unknown species id '{sid}'"
+    if effective_species(o) != sid or effective_species(rep) != sid:
+        return (f"both photographs must currently be records of '{sid}' — "
+                "an identification has changed since this was marked")
+    if not (_located(o) and _located(rep)):
+        return "both photographs need coordinates — without them they cannot be one patch"
+    d = metres(o, rep)
+    if d > OCCURRENCE_RADIUS_M:
+        return (f"{d:.1f} m apart, beyond the {OCCURRENCE_RADIUS_M} m that makes one patch — "
+                "these are separate finds, each with its own photographs")
+
+    # The mark is scoped to one species, but its EFFECT is on the whole image:
+    # a surplus frame stops being carried, and everything identified in it goes
+    # with it. Roughly a fifth of this survey's photographs have an `also` list,
+    # and a plant caught behind the subject is frequently the only record there is
+    # of it growing at that spot — for an invasive, possibly the only one there
+    # will ever be. So a mark that would leave some other species with nothing
+    # carried at this spot is refused, and the person is told which one.
+    #
+    # Deliberately conservative: it asks for another carried photograph within the
+    # radius of THIS one, not anywhere in the single-link chain. Erring towards
+    # refusing costs an explanation; erring the other way costs the evidence.
+    if obs is not None:
+        for sid in {effective_species(o), *(o.get("also") or [])} - {"unknown", r["species_id"]}:
+            near = [m for m in obs
+                    if m["file"] != o["file"] and not is_redundant(m) and not m.get("rejected")
+                    and _located(m) and metres(o, m) <= OCCURRENCE_RADIUS_M
+                    and sid in {effective_species(m), *(m.get("also") or [])}]
+            if not near:
+                return (f"it is the only photograph carrying '{sid}' at this spot — "
+                        "marking it surplus would delete that record too")
+    return None
+
+
 def effective_species(o):
     """The species to believe: a human correction if there is one, else the model's."""
     v = o.get("verified") or {}
@@ -116,10 +259,10 @@ def thumb_path(o):
 
 
 def withheld_reason(o):
-    """Why this record is not a survey record, or None if it is one.
+    """Why this record is not carried on the published site, or None if it is.
 
-    Three ways a photograph fails to be evidence, and the survey needs all three
-    answered before it will publish one:
+    Four ways a photograph fails to earn its place, and the survey needs all of
+    them answered before it will publish one:
 
       * It is not a photograph of vegetation. The screener says so.
       * It cannot be placed or dated. A sighting is a claim that a species was HERE,
@@ -130,14 +273,24 @@ def withheld_reason(o):
       * Nothing in it could be identified. A habitat shot or a bark close-up is a
         fair vegetation photograph, but if no organism could be named it contributes
         no finding and only dilutes the pins that mean something.
+      * A person has marked it surplus to another photograph of the same find. This
+        one is different in kind from the other three: the record is perfectly good
+        evidence and stays in the data, in the photograph count and in `photos/`.
+        It is the IMAGE that stops being carried, because the find already has a
+        frame representing it and the seventh shot of one patch costs an upload, a
+        hosted object and a reader's attention for nothing.
 
     Derived rather than stored as a flag, so it corrects itself — the moment a
-    re-run identifies the photo, or `refresh-gps` recovers coordinates from the
-    original, it publishes with no bookkeeping to remember. Withheld records stay
-    in the data and in `todo`; nothing is deleted.
+    re-run identifies the photo, `refresh-gps` recovers coordinates from the
+    original, or someone unmarks a surplus frame, it publishes with no bookkeeping
+    to remember. Withheld records stay in the data and in `todo`; nothing is
+    deleted.
     """
     if o.get("rejected"):
         return "screened out — not a photograph of vegetation"
+    if is_redundant(o):
+        r = o["redundant"]
+        return f"marked surplus by {r['by']} — '{r['of']}' represents this find"
     if not (o.get("lat") and o.get("lon")):
         return "no location — nothing can be sent to check it"
     if not o.get("taken"):
@@ -160,8 +313,13 @@ def reviewable(o):
     name it, and that is exactly what `corrected` is for. A photo with no location
     or date does not: there is no column a person could fill to fix it, so it would
     only spend a reviewer's attention on something that can never publish.
+
+    Nor does a frame already marked surplus: the find it belongs to is in the sheet
+    under the photograph that represents it, and putting the other six there too is
+    the seven-walks-for-one-shrub problem `one_per_patch` exists to end.
     """
-    return bool(not o.get("rejected") and o.get("lat") and o.get("lon") and o.get("taken"))
+    return bool(not o.get("rejected") and not is_redundant(o)
+                and o.get("lat") and o.get("lon") and o.get("taken"))
 
 
 def public_obs():
@@ -333,21 +491,58 @@ def occurrence_payload(obs):
 
     The app cannot recompute this: clustering lives in one place so the checklist a
     volunteer reads and the record the state receives describe the same find.
+
+    Pass the surplus records in along with the carried ones. `n` counts what the
+    site can actually show and `files` lists only those, but `surplus` reports how
+    many further frames a person marked — so a find photographed seven times and
+    curated down to one still says so, instead of quietly presenting as a find
+    somebody photographed once.
     """
-    return [{"species_id": x["species_id"],
-             "lat": round(x["lat"], 6), "lon": round(x["lon"], 6),
-             "n": len(x["members"]), "spread_m": round(x["spread_m"], 1),
-             "first_seen": x["first_seen"], "last_seen": x["last_seen"],
-             "confirmed": x["confirmed"], "confirmed_by": x["confirmed_by"],
-             "checked_on": x["checked_on"],
-             "confirming_photos": len(x["confirming_photos"]),
-             "files": [o["file"] for o in x["members"]]}
-            for x in occurrences(obs)]
+    out = []
+    for x in occurrences(obs):
+        carried = [o for o in x["members"] if not is_redundant(o)]
+        out.append({"species_id": x["species_id"],
+                    "lat": round(x["lat"], 6), "lon": round(x["lon"], 6),
+                    "n": len(carried), "surplus": len(x["surplus"]),
+                    "spread_m": round(x["spread_m"], 1),
+                    "first_seen": x["first_seen"], "last_seen": x["last_seen"],
+                    "confirmed": x["confirmed"], "confirmed_by": x["confirmed_by"],
+                    "checked_on": x["checked_on"],
+                    "confirming_photos": len(x["confirming_photos"]),
+                    # EVERY member, surplus included, though `n` counts only the
+                    # carried ones. This list is how the app knows which patch a
+                    # photograph belongs to, and a surplus frame that is not in it
+                    # detaches from its own find and renders as a lone photograph
+                    # somewhere else on the page — which is the opposite of what
+                    # marking it was for. Published data contains no surplus
+                    # records at all, so there the extra names resolve to nothing
+                    # and are simply never looked up.
+                    "files": [o["file"] for o in x["members"]]})
+    return out
+
+
+def surplus_records(obs):
+    """Records kept off the site ONLY because a person marked them surplus.
+
+    Distinct from "every record with a mark on it": a photograph that is also
+    undated, or that the screener rejected, is withheld on its own merits and
+    counting it as curation would overstate what the marking actually did.
+    """
+    return [o for o in obs if is_redundant(o)
+            and withheld_reason({k: v for k, v in o.items() if k != "redundant"}) is None]
 
 
 def _occurrence(sid, members):
     """One occurrence, summarised. `anchor` is the earliest photograph — the one to
-    name when confirming, and stable while it exists."""
+    name when confirming, and stable while it exists.
+
+    Earliest, but never one somebody marked surplus: the anchor is what represents
+    the find in every list and what a steward is asked to go and check, so it has
+    to be a frame that is actually carried. A find whose every photograph is marked
+    falls back to the earliest, which keeps the find visible rather than dropping
+    it — and `verify` reports that state, because it means the mark that was
+    supposed to leave one representative left none.
+    """
     species = {s["id"]: s for s in enriched_species()}.get(sid, {})
     verdicts = [o["verified"] for o in members
                 if (o.get("verified") or {}).get("status") in ("confirmed", "corrected")]
@@ -365,7 +560,8 @@ def _occurrence(sid, members):
         "id_marks": species.get("id_marks") or [],
         "lookalikes": species.get("lookalikes") or [],
         "members": members,
-        "anchor": members[0],
+        "anchor": next((m for m in members if not is_redundant(m)), members[0]),
+        "surplus": [m for m in members if is_redundant(m)],
         "lat": sum(float(o["lat"]) for o in members) / len(members),
         "lon": sum(float(o["lon"]) for o in members) / len(members),
         "spread_m": max((metres(a, b) for a in members for b in members), default=0.0),
@@ -600,6 +796,100 @@ def make_thumb(src, dst):
     return True
 
 
+def _apply_fallback(rec, fallback):
+    """Fill in what the photograph did not carry, and say when that happened.
+
+    Separated from `ingest_file` so the rule can be tested without a filesystem,
+    because it is a judgement rather than plumbing: it decides when the survey is
+    willing to state a location it did not get from the photograph.
+
+    An empty string counts as absent — that is precisely what a missing EXIF tag
+    reads as by the time it reaches here.
+    """
+    fb = {k: v for k, v in (fallback or {}).items() if v not in (None, "")}
+    # All or nothing. Latitude from the phone and longitude from the photograph
+    # would place the record somewhere neither of them ever saw.
+    if fb.get("lat") and fb.get("lon") and not (rec.get("lat") and rec.get("lon")):
+        rec["lat"], rec["lon"] = blur(fb["lat"]), blur(fb["lon"])
+        # The record now states where the photographer was standing when they
+        # pressed send, which is not the same claim as where the camera was when
+        # the shutter opened. A survey that will not invent a species or a date
+        # must not present one of these as the other, so it is labelled — and
+        # only ever when the substitution actually happened.
+        rec["location_source"] = "field-device"
+        if fb.get("accuracy_m"):
+            rec["location_accuracy_m"] = fb["accuracy_m"]
+    if fb.get("taken") and not rec.get("taken"):
+        rec["taken"] = fb["taken"]
+    return rec
+
+
+def ingest_file(src, batch, obs, known, local=False, extra=None, fallback=None):
+    """Bring one image into the library. Returns the new record, or None.
+
+    Factored out of `cmd_ingest` so a photograph uploaded from the field goes
+    through exactly this path and not a shortcut around it — same content-hash
+    dedupe, same conversion, same thumbnail, same EXIF read. A field upload is a
+    photograph like any other; the only thing special about it is who handed it
+    over, and that goes in `extra`.
+
+    `fallback` supplies a location and date for the common case that the browser
+    stripped the EXIF on the way up — which it usually does, and which is why
+    `check-photos` exists at all. It is a fallback in the strict sense: anything
+    the photograph itself carried wins, and an empty string counts as absent
+    because that is exactly what a missing EXIF tag reads as here.
+
+    When the fallback location is the one actually used, the record says so in
+    `location_source`. That field is the whole reason this is acceptable: a fix
+    the phone took when someone pressed send is not the same claim as a fix the
+    camera recorded at the shutter, and a survey that refuses to invent a species
+    or a date must not quietly present one as the other.
+    """
+    h = sha(src)
+    if h in known:
+        return None
+    stem = src.stem
+    dest = PHOTOS / (stem + ".jpg")
+    n = 1
+    while dest.exists():
+        dest = PHOTOS / f"{stem}-{n}.jpg"
+        n += 1
+    PHOTOS.mkdir(exist_ok=True)
+    if src.suffix.lower() in (".jpg", ".jpeg"):
+        shutil.copy2(src, dest)
+    elif not to_jpeg(src, dest):
+        print(f"  ! could not convert {src.name} — skipped")
+        return None
+    # No thumbnail, no record. identify.py reads the thumbnail, publish uploads
+    # it, and the site shows it, so a record without one is a row that can never
+    # become anything. Leaving it out means the photo is simply retried on the
+    # next run instead of sitting in the survey as a permanent blank.
+    if not make_thumb(dest, (THUMBS_LOCAL if local else THUMBS) / dest.name):
+        print(f"  ! could not thumbnail {dest.name} — skipped, will retry next run")
+        dest.unlink(missing_ok=True)
+        return None
+    e = exif_of(dest)
+    # Both copies are full precision here — see PRIVATE_F above. The sidecar is
+    # kept only so a record's original coordinates survive an edit to
+    # observations.json; it is not a privacy boundary in this fork.
+    private = load(PRIVATE_F, {})
+    private[dest.name] = {"lat": e["lat"], "lon": e["lon"], "taken": e["taken"]}
+    save(PRIVATE_F, private)
+    rec = {"id": dest.stem, "file": dest.name, "species_id": "unknown",
+           "confidence": "unidentified", "note": "", "taken": e["taken"],
+           "lat": blur(e["lat"]), "lon": blur(e["lon"]), "batch": batch, "hash": h}
+    _apply_fallback(rec, fallback)
+    for k, v in (extra or {}).items():
+        if v not in (None, ""):
+            rec[k] = v
+    if local:
+        rec["local_only"] = True
+    obs.append(rec)
+    known.add(h)
+    print(f"  + {dest.name}")
+    return rec
+
+
 def cmd_ingest(args):
     src_root = pathlib.Path(os.path.expanduser(args.folder)).resolve()
     if not src_root.is_dir():
@@ -622,46 +912,11 @@ def cmd_ingest(args):
     batch = args.batch or src_root.name
     added, skipped = 0, 0
     for src in found:
-        h = sha(src)
-        if h in known:
+        if sha(src) in known:
             skipped += 1
             continue
-        stem = src.stem
-        dest = PHOTOS / (stem + ".jpg")
-        n = 1
-        while dest.exists():
-            dest = PHOTOS / f"{stem}-{n}.jpg"
-            n += 1
-        PHOTOS.mkdir(exist_ok=True)
-        if src.suffix.lower() in (".jpg", ".jpeg"):
-            shutil.copy2(src, dest)
-        elif not to_jpeg(src, dest):
-            print(f"  ! could not convert {src.name} — skipped")
-            continue
-        # No thumbnail, no record. identify.py reads the thumbnail, publish uploads
-        # it, and the site shows it, so a record without one is a row that can never
-        # become anything. Leaving it out means the photo is simply retried on the
-        # next run instead of sitting in the survey as a permanent blank.
-        if not make_thumb(dest, (THUMBS_LOCAL if args.local else THUMBS) / dest.name):
-            print(f"  ! could not thumbnail {dest.name} — skipped, will retry next run")
-            dest.unlink(missing_ok=True)
-            continue
-        e = exif_of(dest)
-        # Both copies are full precision here — see PRIVATE_F above. The sidecar is
-        # kept only so a record's original coordinates survive an edit to
-        # observations.json; it is not a privacy boundary in this fork.
-        private = load(PRIVATE_F, {})
-        private[dest.name] = {"lat": e["lat"], "lon": e["lon"], "taken": e["taken"]}
-        save(PRIVATE_F, private)
-        rec = {"id": dest.stem, "file": dest.name, "species_id": "unknown",
-               "confidence": "unidentified", "note": "", "taken": e["taken"],
-               "lat": blur(e["lat"]), "lon": blur(e["lon"]), "batch": batch, "hash": h}
-        if args.local:
-            rec["local_only"] = True
-        obs.append(rec)
-        known.add(h)
-        added += 1
-        print(f"  + {dest.name}")
+        if ingest_file(src, batch, obs, known, local=args.local):
+            added += 1
 
     obs.sort(key=lambda o: o.get("taken", ""))
     save_obs(obs)
@@ -702,6 +957,10 @@ def cmd_build(args):
         # the site can show both — "AI said X, confirmed as Y".
         o["effective_species_id"] = effective_species(o)
         o["is_verified"] = is_verified(o)
+        # Surplus frames are absent from the published data entirely. They survive
+        # into the LOCAL build so `serve` shows what curation actually did, which
+        # is the only place anyone can see a marked frame at all.
+        o["is_redundant"] = is_redundant(o)
     # Tell the app where each thumbnail actually lives, so it doesn't have to know
     # the tracked/local split. publish() overwrites this with the published layout.
     for o in obs:
@@ -717,6 +976,12 @@ def cmd_build(args):
     notice = load(PUBCFG_F, {}).get("notice")
     if notice:
         payload["notice"] = notice
+    # Where a signed-in contributor submits. Not a secret and deliberately tracked,
+    # for the same reason `r2_public_base` is: the deploy runner has to build a
+    # working page without ever holding a credential. Absent, and the site is
+    # exactly the read-only survey it was before contributor mode existed.
+    if (endpoint := load(PUBCFG_F, {}).get("contributor_endpoint")):
+        payload["contributor_endpoint"] = endpoint
     DATA_JS.write_text("window.PLANT_DB = " + json.dumps(payload, indent=1) + ";\n")
     n_local = sum(1 for o in obs if o.get("local_only"))
     extra = f" ({n_local} local-only, never published)" if n_local else ""
@@ -839,6 +1104,28 @@ def cmd_verify(args):
     for f in imprecise:
         problems.append(f"{f} has a coordinate rounded below survey precision")
 
+    # Marks that no longer hold. A mark says "surplus to THAT photograph of THIS
+    # species, in THIS patch" — and all three can move underneath it when a re-run
+    # re-identifies a photo or `refresh-gps` recovers a better fix. A lapsed mark
+    # is a photograph being kept off the site for a reason that stopped being true,
+    # so it is reported rather than left to quietly go on hiding one.
+    by_file = {o["file"]: o for o in obs}
+    ids = {s["id"] for s in load(SPECIES_F, [])}
+    for o in obs:
+        if not is_redundant(o):
+            continue
+        r = o["redundant"]
+        if (why := redundancy_problem(r, o, by_file.get(r.get("of")), ids, obs)):
+            warnings.append(f"{o['file']} is marked surplus, but that no longer holds: {why}")
+    # A find every one of whose photographs is marked has no representative left.
+    # `_occurrence` falls back to the earliest so the find stays visible, but the
+    # marking did not do what the person doing it meant it to do.
+    for x in occurrences([o for o in obs if not o.get("rejected")]):
+        if x["members"] and all(is_redundant(m) for m in x["members"]):
+            warnings.append(f"every photograph of {x['common']} at "
+                            f"{x['lat']:.5f}, {x['lon']:.5f} is marked surplus — "
+                            "the find has no photograph representing it")
+
     # Records published under a survey's name should be from that survey.
     ac = area_check(public_obs())
     if ac:
@@ -875,7 +1162,7 @@ def cmd_verify(args):
             print("Or widen survey_area in data/publish-config.json if they belong here.")
         sys.exit(1)
     if warnings:
-        print(f"{len(warnings)} record(s) missing location or date:")
+        print(f"{len(warnings)} record(s) need a look:")
         for w in warnings[:5]:
             print(f"  - {w}")
         if len(warnings) > 5:
@@ -911,6 +1198,11 @@ def cmd_publish(args):
     # vegetation — someone's camera roll spilling in), and one nothing could be
     # named in. Neither the record nor its thumbnail belongs on a public site.
     kept = public_obs()
+    # Frames a person marked surplus. They are not published — that is the point —
+    # but the occurrence payload is built from `kept + surplus` so a find can still
+    # say how many photographs stand behind it. Counting only what is carried would
+    # make curation look like a thinner survey.
+    surplus = surplus_records(load(OBS_F, []))
     from collections import Counter
     held = Counter(r for r in (withheld_reason(o) for o in load(OBS_F, [])) if r)
     withheld = len(load(LOCAL_OBS_F, []))
@@ -927,10 +1219,14 @@ def cmd_publish(args):
     payload = {"species": species, "observations": kept,
                # Built from the PUBLISHED set: a withheld photograph is not evidence
                # anyone can act on, so it must not appear in a call for help either.
-               "occurrences": occurrence_payload(kept),
+               # Surplus frames are the one exception — they are real evidence of
+               # the find, just not carried as images, so they still count towards it.
+               "occurrences": occurrence_payload(kept + surplus),
                "generated": datetime.datetime.now().strftime("%Y-%m-%d %H:%M")}
     if cfg.get("notice"):
         payload["notice"] = cfg["notice"]
+    if cfg.get("contributor_endpoint"):
+        payload["contributor_endpoint"] = cfg["contributor_endpoint"]
     (pub / "app" / "data.js").write_text("window.PLANT_DB = " + json.dumps(payload, indent=1) + ";\n")
 
     n = 0
@@ -1137,7 +1433,7 @@ def cmd_confirm(args):
 
     for o in sel:
         v = {"status": args.status, "by": args.by,
-             "date": args.date or datetime.date.today().isoformat()}
+             "date": args.date or datetime.date.today().isoformat(), "via": "cli"}
         if args.species:
             v["species_id"] = args.species
         if args.notes:
@@ -1356,6 +1652,22 @@ def cmd_sheet_push(args):
     # blank a steward's work — even one made between this read and the write.
     existing = sheets.pull(svc, cfg)
 
+    # Mirror verifications that arrived any other way into the sheet's own columns.
+    # Two reasons, and the second is the important one:
+    #   * A steward opening the sheet should see every field check that exists, not
+    #     only the ones typed into this sheet. Otherwise a record confirmed in the
+    #     field app reads as still needing a walk.
+    #   * It closes the gap the pull's `via` test guards: once the sheet holds the
+    #     same verdict, the two channels agree and there is no blank cell for anyone
+    #     to misread as a withdrawal.
+    # Only ever fills a BLANK cell — a steward's own entry is never overwritten.
+    for o in obs:
+        v = o.get("verified") or {}
+        if v.get("status") and not (existing.get(o["file"], {}).get("status") or "").strip():
+            existing[o["file"]] = {"status": v["status"], "species_id": v.get("species_id", ""),
+                                   "by": v.get("by", ""), "date": v.get("date", ""),
+                                   "notes": v.get("notes", "")}
+
     # Tell each steward whether their row actually landed. A refused verification
     # otherwise only exists as a line in a CI log nobody opens, and the person who
     # walked out there is left believing it was recorded.
@@ -1409,7 +1721,16 @@ def cmd_sheet_pull(args):
             continue
         cur = o.get("verified") or {}
         if not v["status"]:
-            if cur:
+            # A blank STATUS withdraws only what the SHEET recorded. A verification
+            # that arrived any other way — `confirm` at a terminal, or a steward
+            # tapping it into the field app — has never been written into this
+            # column, so a blank cell against it is the sheet not having caught up,
+            # not somebody retracting it. Without this test the pull silently
+            # withdrew every non-sheet verification within two hours of it being
+            # made, which is the single most expensive kind of data here to lose.
+            # `via` defaults to "sheet" so verifications recorded before it existed
+            # keep behaving exactly as they did.
+            if cur and cur.get("via", "sheet") == "sheet":
                 changes.append((o, None, f"clear verification (was {cur.get('status')})"))
             continue
         # Same rules the push writes into the sheet's "recorded?" column, so a
@@ -1418,7 +1739,7 @@ def cmd_sheet_pull(args):
             problems.append(f"{f}: {problem}")
             continue
         new = {"status": v["status"], "by": v["by"],
-               "date": v["date"] or datetime.date.today().isoformat()}
+               "date": v["date"] or datetime.date.today().isoformat(), "via": "sheet"}
         if v["species_id"]:
             new["species_id"] = v["species_id"]
         if v["notes"]:
@@ -1468,6 +1789,331 @@ def cmd_sheet_pull(args):
     save_obs(obs)
     cmd_build(args)
     print(f"\nApplied {len(changes)} verification change(s).")
+
+
+# --- The contributor inbox --------------------------------------------------
+# Everything a signed-in contributor does on the site lands here, and nothing they
+# do reaches data/observations.json except through this function. It is the same
+# arrangement as the steward sheet, and it exists for the same reason: the survey
+# has exactly one writer, and adding a web app must not make it two.
+#
+# The three submission kinds and what each is allowed to touch:
+#
+#   verify     -> the `verified` block          (role: verifier, admin)
+#   redundant  -> the `redundant` block         (role: admin)
+#   upload     -> a new record, via ingest_file (role: contributor, verifier, admin)
+#
+# The role is re-checked here even though the Worker already checked it. See the
+# note on CAPABILITIES: the Worker is deployed separately from this repository,
+# and the rule about who may create a field check belongs in the half that is
+# reviewed and tested.
+
+def _sub_problem(s, obs_by_file, species_ids):
+    """Why this submission cannot be applied, or None. Never raises on bad input —
+    the payload came off the network and may be anything at all."""
+    kind, role = s.get("kind"), s.get("role")
+    if kind not in ("verify", "redundant", "upload"):
+        return f"unknown submission kind '{kind}'"
+    need = {"verify": "verify", "redundant": "redundant", "upload": "upload"}[kind]
+    if not may(role, need):
+        return (f"a '{role}' may not {need} — this submission was accepted by the "
+                f"Worker but is refused here")
+    if not s.get("by"):
+        return "no contributor name on the submission"
+
+    if kind == "upload":
+        return None                      # the ingest path does its own checking
+
+    o = obs_by_file.get(s.get("file"))
+    if o is None:
+        return f"no record named '{s.get('file')}'"
+
+    if kind == "verify":
+        if not s.get("status"):
+            return None                  # a withdrawal; nothing more to check
+        return verification_problem(
+            {"status": s.get("status"), "species_id": s.get("species_id"),
+             "by": s.get("by")}, species_ids)
+
+    r = {"by": s["by"], "of": s.get("of"), "species_id": s.get("species_id")}
+    if s.get("unmark"):
+        return None if is_redundant(o) else "that photograph is not marked surplus"
+    return redundancy_problem(r, o, obs_by_file.get(s.get("of")), species_ids,
+                              list(obs_by_file.values()))
+
+
+def cmd_inbox_pull(args):
+    """Apply what contributors submitted through the site. Previews by default.
+
+    Deliberately the same shape as `sheet-pull`, down to the withdrawal guard:
+    both are unattended drains of a queue a person edits, and someone reading one
+    should already understand the other.
+    """
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+    import inbox
+    cfg = inbox.config()
+    if not cfg:
+        # Not an error. Contributor mode is optional, the pipeline calls this on
+        # every tick, and a survey with no Worker has to keep running untouched.
+        print("Contributor mode is not configured — nothing to collect. "
+              f"(Set {', '.join(inbox.missing_vars())} to enable it.)")
+        return
+
+    try:
+        subs = inbox.pending(cfg)
+    except inbox.InboxError as e:
+        # A Worker that is down must not fail the nightly run: identifications are
+        # already paid for and the rest of the tick still has work to do.
+        print(f"  ! could not reach the contributor inbox: {e}")
+        return
+
+    obs = load_obs()
+    by_file = {o["file"]: o for o in obs}
+    ids = {s["id"] for s in load(SPECIES_F, [])}
+
+    applied, refused, uploads = [], [], []
+    for s in subs:
+        if (problem := _sub_problem(s, by_file, ids)):
+            refused.append((s, problem))
+            continue
+        if s["kind"] == "upload":
+            uploads.append(s)
+        else:
+            applied.append(s)
+
+    if not subs:
+        print("Nothing waiting in the contributor inbox.")
+        return
+
+    # Same reasoning as sheet-pull, and the same limit. A field app makes a
+    # withdrawal one tap, so if anything this matters more here.
+    clears = [s for s in applied if s["kind"] == "verify" and not s.get("status")
+              and (by_file[s["file"]].get("verified"))]
+    if len(clears) > MAX_UNATTENDED_CLEARS and not args.force:
+        print(f"\n  ! {len(clears)} verification(s) would be WITHDRAWN in one collection:")
+        for s in clears[:10]:
+            print(f"      {s['file'][:14]}…  by {s['by']}")
+        print(f"\n    More than {MAX_UNATTENDED_CLEARS} at once is more likely a mistake than"
+              "\n    that many people changing their mind. Nothing was applied — not even"
+              "\n    the other submissions. Re-run with --force if it is genuinely right.")
+        sys.exit(1)
+
+    print(f"{len(subs)} submission(s) in the contributor inbox:")
+    for s in applied:
+        print(f"  {s['kind']:<9} {s.get('file','')[:14]:<15} by {s['by']} ({s['role']})")
+    for s in uploads:
+        print(f"  upload    {s.get('filename','')[:14]:<15} by {s['by']} ({s['role']})")
+    for s, why in refused:
+        print(f"  ! refused  {s.get('file', s.get('filename', ''))[:14]:<15} {why}")
+    if not args.yes:
+        print("\nNothing changed. Re-run with --yes to apply.")
+        return
+
+    n_new = 0
+    if uploads:
+        n_new = _apply_uploads(cfg, inbox, uploads, obs)
+    for s in applied:
+        _apply_submission(s, by_file[s["file"]])
+    if applied or n_new:
+        obs.sort(key=lambda o: o.get("taken", ""))
+        save_obs(obs)
+        cmd_build(args)
+
+    # Receipts last, and only for what actually landed. The site reads these back
+    # so a contributor sees "recorded" or the reason it was not — the inbox's
+    # version of the sheet's `recorded?` column, and it exists for the same
+    # reason: a refusal that only appears in a CI log leaves the person who walked
+    # out there believing it was recorded.
+    for s in applied + uploads:
+        _receipt(inbox, cfg, s["id"], "recorded", "")
+    for s, why in refused:
+        _receipt(inbox, cfg, s["id"], "refused", why)
+
+    print(f"\nApplied {len(applied)} submission(s) and {n_new} new photograph(s); "
+          f"refused {len(refused)}.")
+
+
+def _receipt(inbox, cfg, sub_id, status, detail):
+    """Acknowledge one submission. A failure here must not undo applied work."""
+    try:
+        inbox.receipt(cfg, sub_id, status, detail)
+    except inbox.InboxError as e:
+        print(f"  ! could not acknowledge {sub_id}: {e} (it will be offered again)")
+
+
+def _apply_submission(s, o):
+    """Write one verification or redundancy mark onto its record."""
+    if s["kind"] == "verify":
+        if not s.get("status"):
+            o.pop("verified", None)
+            return
+        v = {"status": s["status"], "by": s["by"],
+             "date": s.get("date") or datetime.date.today().isoformat(), "via": "site"}
+        if s.get("species_id"):
+            v["species_id"] = s["species_id"]
+        if s.get("notes"):
+            v["notes"] = s["notes"]
+        o["verified"] = v
+        return
+    if s.get("unmark"):
+        o.pop("redundant", None)
+        return
+    r = {"by": s["by"], "date": s.get("date") or datetime.date.today().isoformat(),
+         "of": s["of"], "species_id": s["species_id"]}
+    if s.get("notes"):
+        r["notes"] = s["notes"]
+    o["redundant"] = r
+
+
+def _apply_uploads(cfg, inbox, uploads, obs):
+    """Fetch uploaded photographs and put them through the ordinary ingest path.
+
+    Nothing here shortcuts screening, identification or the content-hash dedupe.
+    A photograph taken in the field is a photograph; the only thing that makes it
+    different is that its coordinates may not have come from EXIF, and that is
+    recorded on the record rather than smoothed over.
+    """
+    known = {o.get("hash") for o in obs if o.get("hash")}
+    tmp = ROOT / ".inbox-uploads"
+    tmp.mkdir(exist_ok=True)
+    added = 0
+    try:
+        for s in uploads:
+            try:
+                data = inbox.photo(cfg, s["id"])
+            except inbox.InboxError as e:
+                print(f"  ! {s.get('filename','?')}: could not fetch the image ({e})")
+                continue
+            name = re.sub(r"[^A-Za-z0-9._-]", "_", s.get("filename") or f"{s['id']}.jpg")
+            src = tmp / name
+            src.write_bytes(data)
+            rec = ingest_file(
+                src, s.get("batch") or "field-app", obs, known,
+                extra={"submitted_by": s["by"], "submitted": s.get("submitted", "")},
+                # The phone's own fix and clock, used only if the photograph
+                # arrived without its own. See `location_source` in ingest_file.
+                fallback={"lat": s.get("lat"), "lon": s.get("lon"),
+                          "accuracy_m": s.get("accuracy_m"),
+                          "taken": (s.get("taken") or "")[:19]})
+            if rec is None:
+                print(f"  - {name}: already in the library, or could not be read")
+                continue
+            # ingest_file prefers what EXIF gave it (setdefault), so this reports
+            # what the record actually ended up with rather than what was offered.
+            if rec.get("location_source") == "field-device":
+                print(f"    location from the contributor's device, not the photograph's EXIF")
+            added += 1
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    return added
+
+
+def cmd_contributor(args):
+    """Mint, list and revoke the tokens that let a person write to the survey.
+
+    A token carries the contributor's NAME and ROLE, and the Worker reads both
+    from it rather than from anything the browser sends. That is what makes
+    attribution structural: `verified.by` cannot be blank, cannot be someone
+    else, and cannot be typed into a box, because the browser never gets a say in
+    it. The sheet has to refuse unattributed verifications after the fact; here
+    one cannot be constructed.
+
+    Only the hash of a token is ever stored, so a leaked database does not let
+    anyone write, and the plaintext is shown exactly once at minting.
+    """
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+    import inbox as inbox_mod
+    import secrets
+
+    if args.action == "bootstrap":
+        # The first admin exists before any admin API can be called, so it is
+        # inserted straight into D1. Printed rather than run: this needs wrangler
+        # and a person's Cloudflare login, and it is a one-time step.
+        token = "sif_" + secrets.token_urlsafe(32)
+        digest = hashlib.sha256(token.encode()).hexdigest()
+        print("Run this once, then keep the token somewhere safe — it is not recoverable:\n")
+        print(f"  npx wrangler d1 execute sears-island-contributors --remote --command \\\n"
+              f"    \"INSERT INTO contributors (id, name, role, token_sha256, created) "
+              f"VALUES (lower(hex(randomblob(8))), '{args.name}', 'admin', "
+              f"'{digest}', datetime('now'));\"\n")
+        print(f"  {token}\n")
+        print("Then put it in .env as SIF_ADMIN_TOKEN, and mint everyone else with")
+        print("  python3 scripts/plantdb.py contributor add --name \"…\" --role verifier")
+        return
+
+    url = os.environ.get("SIF_WORKER_URL", "").strip().rstrip("/")
+    token = os.environ.get("SIF_ADMIN_TOKEN", "").strip()
+    if not (url and token):
+        sys.exit("Set SIF_WORKER_URL and SIF_ADMIN_TOKEN in .env first "
+                 "(`contributor bootstrap` mints the first admin token).")
+    cfg = {"url": url, "token": token}
+
+    try:
+        if args.action == "list":
+            for c in inbox_mod._call(cfg, "GET", "/api/contributors").get("contributors", []):
+                state = "" if c.get("active") else "   (revoked)"
+                seen = c.get("last_seen") or "never used"
+                print(f"  {c['id']}  {c['role']:<12} {c['name']:<24} last seen {seen}{state}")
+            return
+        if args.action == "add":
+            if args.role not in ROLES:
+                sys.exit(f"--role must be one of {', '.join(ROLES)}")
+            got = inbox_mod._call(cfg, "POST", "/api/contributors",
+                                  {"name": args.name, "role": args.role})
+            print(f"Minted a '{args.role}' token for {args.name}.\n")
+            print(f"  {url}/#key={got['token']}\n")
+            print("Send them that link. Opening it once signs them in on that device and")
+            print("the token is not shown again — mint a new one and revoke this if it is lost.")
+            if args.role == "pipeline":
+                print("\nThis is the unattended drain token: put it in .env as "
+                      "SIF_PIPELINE_TOKEN\nand in the repository's Actions secrets. It can "
+                      "collect the inbox and nothing else.")
+            return
+        inbox_mod._call(cfg, "POST", f"/api/contributors/{args.id}/revoke", {})
+        print(f"Revoked {args.id}. Anything they already recorded stays — it was still "
+              "a person\nwho went and looked.")
+    except inbox_mod.InboxError as e:
+        sys.exit(f"{e}")
+
+
+def cmd_redundant(args):
+    """Mark a photograph surplus to another one of the same find, from a terminal.
+
+    The site is where this normally happens, but the survey should never have a
+    capability that only exists behind a deployed Worker — that is how a project
+    ends up unable to fix its own data when something is down.
+    """
+    obs = load_obs()
+    by_file = {o["file"]: o for o in obs}
+    ids = {s["id"] for s in load(SPECIES_F, [])}
+    o = by_file.get(args.file)
+    if o is None:
+        sys.exit(f"No record named '{args.file}'.")
+    if args.unmark:
+        if not is_redundant(o):
+            sys.exit(f"{args.file} is not marked surplus.")
+        who = o["redundant"]["by"]
+        o.pop("redundant")
+        save_obs(obs)
+        cmd_build(args)
+        print(f"Unmarked {args.file} (was marked by {who}). It is carried again "
+              "from the next publish.")
+        return
+
+    rep = by_file.get(args.of)
+    r = {"by": args.by, "of": args.of,
+         "species_id": args.species or (rep and effective_species(rep))}
+    if (why := redundancy_problem(r, o, rep, ids, obs)):
+        sys.exit(f"Refused: {why}")
+    r["date"] = args.date or datetime.date.today().isoformat()
+    if args.notes:
+        r["notes"] = args.notes
+    o["redundant"] = r
+    save_obs(obs)
+    cmd_build(args)
+    print(f"{args.file} is surplus to {args.of} for {r['species_id']}, marked by {args.by}.")
+    print("It stays in photos/ and in the data, and stops being carried on the site "
+          "from the next publish.")
 
 
 def cmd_cache(args):
@@ -1875,6 +2521,33 @@ def cmd_doctor(args):
         check(bool(_sh.config()), "Google Sheet configured",
               "Google Sheet not configured (" + ", ".join(_sh.missing_vars())
               + ") — optional; enables steward review")
+    except ImportError:
+        pass
+
+    # Contributor mode. Optional throughout — without it the site is the read-only
+    # survey it has always been — so every branch here is informational, and none
+    # of it can make `doctor` fail.
+    try:
+        import inbox as _ib
+        endpoint = cfg.get("contributor_endpoint")
+        drain = _ib.config()
+        if not endpoint and not drain:
+            print("  --   Contributor mode off (no contributor_endpoint in "
+                  "publish-config.json) — the site is read-only")
+        else:
+            check(bool(endpoint), "Contributor endpoint published to the site",
+                  "SIF_WORKER_URL is set but publish-config.json has no "
+                  "contributor_endpoint — nobody can sign in on the site")
+            check(bool(drain), "Contributor inbox drain configured",
+                  "The site can accept submissions but the pipeline cannot collect them ("
+                  + ", ".join(_ib.missing_vars()) + ") — they would queue up unapplied")
+            if drain:
+                ok_i, msg = _ib.check(drain)
+                check(ok_i, f"Contributor inbox reachable — {msg}",
+                      f"Contributor inbox unreachable: {msg}")
+            if endpoint and not str(endpoint).startswith("https://"):
+                todo.append(f"contributor_endpoint is {endpoint} — a contributor token "
+                            "would travel unencrypted; use https:// outside local testing")
     except ImportError:
         pass
 
@@ -2499,6 +3172,27 @@ if __name__ == "__main__":
     pl.add_argument("--force", action="store_true",
                     help=f"allow withdrawing more than {MAX_UNATTENDED_CLEARS} verifications at once")
     pl.set_defaults(func=cmd_sheet_pull)
+    ip = sub.add_parser("inbox-pull", help="apply what contributors submitted through the site")
+    ip.add_argument("--yes", action="store_true", help="apply (otherwise just previews)")
+    ip.add_argument("--force", action="store_true",
+                    help=f"allow withdrawing more than {MAX_UNATTENDED_CLEARS} verifications at once")
+    ip.set_defaults(func=cmd_inbox_pull)
+    ct = sub.add_parser("contributor", help="mint, list and revoke contributor sign-in tokens")
+    ct.add_argument("action", choices=["list", "add", "revoke", "bootstrap"])
+    ct.add_argument("--name", help="the person's name — this becomes 'verified by'")
+    ct.add_argument("--role", default="contributor",
+                    help=f"one of {', '.join(ROLES)} (default: contributor)")
+    ct.add_argument("--id", help="which token to revoke (see `contributor list`)")
+    ct.set_defaults(func=cmd_contributor)
+    rd = sub.add_parser("redundant", help="mark a photograph surplus to another of the same find")
+    rd.add_argument("--file", required=True, help="the surplus photograph")
+    rd.add_argument("--of", help="the photograph that represents the find")
+    rd.add_argument("--by", help="who decided — a name, not an initial")
+    rd.add_argument("--species", help="the species it is surplus for (default: what both are)")
+    rd.add_argument("--date", help="when (defaults to today)")
+    rd.add_argument("--notes", help="why")
+    rd.add_argument("--unmark", action="store_true", help="carry this photograph again")
+    rd.set_defaults(func=cmd_redundant)
     sub.add_parser("cache", help="what we've already paid to identify, and what it cost").set_defaults(func=cmd_cache)
     fw = sub.add_parser("fieldwork", help="what to go and check, and what would settle each")
     fw.add_argument("--status", help="only this regulatory status")

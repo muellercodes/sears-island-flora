@@ -89,6 +89,12 @@ That separation is deliberate beyond tidiness: it means an outside editor (a sha
 spreadsheet for the Friends of Sears Island, say) can own the verification columns
 outright without ever colliding with the pipeline, because no field has two writers.
 
+There are three ways to record one — `confirm` at a terminal, the steward sheet, and
+[contributor mode](#contributor-mode-signing-in-on-the-site) on the site itself — and
+each records which it was in `verified.via`. None of them infers anything: no
+confidence score, no re-run and no similarity between photographs has ever set one of
+these fields, and nothing in the pipeline is permitted to.
+
 Unverified records are marked as such everywhere they appear, and their map pins are
 drawn with an open, dashed ring — the ring is the claim, and it is not closed yet.
 
@@ -261,6 +267,258 @@ python3 scripts/plantdb.py sheet-pull --yes --force   # ...including >2 withdraw
 
 Underneath all of it, `data/observations.json` is in git, so any verification that
 was ever pulled is recoverable from history.
+
+## Contributor mode: signing in on the site
+
+The sheet works for someone at a desk. It is a poor tool for a steward standing in
+front of the plant, and it cannot take a photograph at all. Contributor mode adds a
+signed-in layer to the published site for three things:
+
+- **record a field check** where the plant is, instead of at a terminal or in a sheet
+- **add a photograph** straight into the find it belongs to
+- **mark a photograph surplus** to the one that represents a find
+
+### The site is still static, and the survey still has one writer
+
+This is the part worth understanding before anything else, because it is the
+constraint everything else was designed around.
+
+`data/observations.json` has exactly **one** writer: the pipeline. That is the
+reason this project has never had a merge conflict in a file three scheduled jobs
+touch every night. A web app that wrote to the survey directly would end it.
+
+So contributor mode does not write to the survey. It writes to an **inbox**, and
+the pipeline drains that inbox on the schedule it already runs — which is exactly
+the shape the Google Sheet already has. A sheet is an inbox a person edits by
+hand; a Worker is an inbox a phone edits over HTTPS. Neither is a second writer.
+
+```
+ phone in the field                    GitHub Actions, every 2h
+        │                                        │
+        │ POST (bearer token)                    │ inbox-pull --yes
+        ▼                                        ▼
+ Cloudflare Worker ──► D1 (queue) ──────► data/observations.json
+        │             R2 (originals)         ONE writer, unchanged
+        ▼
+   receipt: "recorded" / "refused, because…"
+```
+
+Everything the Worker accepts is checked **again** by `inbox-pull` before a byte
+is written, against the same `verification_problem` the sheet uses. That is not
+belt-and-braces: the Worker is deployed separately from this repository and can be
+changed without review, while the project's central claim is that `verified`
+records a real human field check. The rule about who may create one therefore
+lives in the tested, version-controlled half of the system.
+
+### Roles
+
+A token carries a person's **name and role**, and the Worker reads both from the
+database row the token hashes to — never from anything the browser sends. So
+`verified.by` cannot be blank, cannot be someone else, and cannot be typed into a
+box. The sheet has to refuse unattributed verifications after the fact; here one
+cannot be constructed.
+
+| | contributor | verifier | admin | pipeline |
+|---|:---:|:---:|:---:|:---:|
+| Add a photograph | ● | ● | ● | |
+| Record a field check | | ● | ● | |
+| Mark a photograph surplus | | | ● | |
+| Overwrite someone else's entry | | | ● | |
+| Collect the inbox | | | ● | ● |
+
+`pipeline` is the role the unattended run holds, and collecting is the *only*
+thing it may do. The token sitting in Actions secrets cannot record a field check,
+mark a photograph surplus or upload anything — it can only carry out what a person
+already decided. Given what `verified` is for, the credential that runs every
+night without supervision should not be able to manufacture one.
+
+The table lives in `plantdb.py` as `CAPABILITIES`; `worker/index.js` carries a
+copy so it can refuse early with a useful message, and a test reads that file and
+fails if the two drift apart.
+
+### Marking photographs surplus
+
+Patches get shot five to ten times. Grouping already keeps the *listings* honest,
+but every frame is still carried: hosted on R2, shipped in the site's data, shown
+in the photo strip.
+
+A mark says: **within this find — this species, this patch — this frame is surplus
+to the one representing it.** Scoped that way deliberately, because the same
+photograph can be the seventh shot of a willowherb patch and the only record there
+is of the bittersweet behind it.
+
+**It is not a perceptual hash, and there is no "find duplicates" button.** Two
+frames a difference algorithm calls identical are routinely a habit shot and a
+close-up of the one feature that settles the identification. The site shows the
+frames of one patch side by side and asks a person.
+
+Nothing is deleted. The original stays in `photos/`, the record stays in
+`observations.json` with the mark on it, and the find keeps counting it:
+
+```
+6 photographs of one patch at 44.45618, -68.88184 · spread ~2 m
+   · 1 further frame marked surplus and not carried
+```
+
+Unmark it and the next publish carries it again. A mark is also re-derived rather
+than trusted: if a re-identification moves either photograph to a different
+species, or `refresh-gps` moves one out of the patch, the mark lapses and `verify`
+reports it instead of going on hiding a photograph of something else.
+
+Three refusals are worth knowing, because each is a decision rather than a check:
+
+| Refused | Why |
+|---|---|
+| Surplus to a frame that is itself surplus | A chain of marks leaves the find with no photograph at all. |
+| More than 10 m apart | Beyond that these are two finds, each entitled to its own photographs. |
+| **It carries the only record of another species at that spot** | The mark is scoped to one species but drops the whole image. A plant caught behind the subject is a real record of it growing there — for an invasive, possibly the only one there will ever be. |
+
+### Photographs from the field, and where their coordinates come from
+
+An uploaded photograph goes through the ordinary ingest path — same content-hash
+dedupe, same conversion, same thumbnail, same screening, same identification. It
+joins a find by *where it was taken*, which the survey already does for anything
+dropped in Drive.
+
+The catch is that **browsers strip EXIF from uploads far more often than not** —
+the same problem `check-photos` exists for. So the page also sends the phone's own
+fix, and the pipeline uses it **only** when the photograph arrived without one:
+
+```json
+{ "lat": "44.4712", "lon": "-68.8834",
+  "location_source": "field-device", "location_accuracy_m": "8" }
+```
+
+`location_source` is the whole reason this is acceptable. Where the photographer
+stood when they pressed send is not the same claim as where the camera was when
+the shutter opened, and a survey that will not invent a species or a date must not
+present one as the other. It is stamped only when the substitution actually
+happened, shown on the record in the site, and if there is no location from either
+source the photograph is withheld exactly as it is today.
+
+### Patchy signal
+
+Sears Island has poor coverage, and the point of this is that it is used standing
+in front of the plant. A field check or a surplus mark that cannot be sent is kept
+on the device and goes automatically when there is a connection; the header says
+how many are waiting, and signing out warns before discarding them.
+
+Photographs are deliberately *not* queued — they are megabytes, `localStorage` is
+a few, and a quota error that silently ate someone's photograph would be worse
+than saying plainly that this one needs a connection.
+
+### Did it land?
+
+The same loop the sheet's `recorded?` column closes, for the same reason: a
+refusal that exists only in a CI log leaves the person who walked out there
+believing it was recorded. Every submission gets a receipt — `recorded`, or
+`refused` with the reason in words a contributor can act on.
+
+The site is honest about timing, too. A submission is queued, not applied, so it
+says so rather than claiming a change the reader can see has not happened:
+
+> Recorded as field-verified. The survey picks this up on its next run, within
+> about two hours.
+
+### Setting it up
+
+Nothing below is required. With no `contributor_endpoint` set, the site is the
+read-only survey it has always been, and `doctor` says so rather than complaining.
+
+```bash
+cd worker
+npm install
+
+npx wrangler d1 create sears-island-contributors    # paste the id into wrangler.jsonc
+npx wrangler r2 bucket create sears-island-inbox    # NOT public — see below
+npx wrangler d1 execute sears-island-contributors --remote --file schema.sql
+npx wrangler deploy
+```
+
+**The inbox bucket must not have public access.** It holds full-resolution
+originals that still carry their EXIF, and the survey strips EXIF from everything
+it publishes precisely so contributor camera serials do not go out. It is also the
+archive for photographs that arrived this way: Drive is the archive for anything
+dropped there, and in a cloud run `photos/` lives only as long as the runner.
+
+Then mint the first admin — this is a one-time bootstrap, because an admin has to
+exist before the admin API can be called:
+
+```bash
+python3 scripts/plantdb.py contributor bootstrap --name "Your Name"
+```
+
+It prints a `wrangler d1 execute` command and a token. Run the command, put the
+token in `.env` as `SIF_ADMIN_TOKEN`, then everyone else is one command:
+
+```bash
+python3 scripts/plantdb.py contributor add --name "J. Whitten" --role verifier
+python3 scripts/plantdb.py contributor add --name "pipeline"   --role pipeline
+python3 scripts/plantdb.py contributor list
+python3 scripts/plantdb.py contributor revoke --id 3f9a1c22
+```
+
+`add` prints a one-time link — `https://…/#key=…`. Send it to the person; opening
+it once signs them in on that device, and the token is moved straight out of the
+URL so it does not sit in history or in a screenshot of the address bar. Only the
+hash is ever stored, so the token cannot be shown again and the database is not a
+key ring even to someone holding it.
+
+Finally, point the site at the Worker and give the pipeline its drain token:
+
+```jsonc
+// data/publish-config.json — tracked, not a secret, exactly like r2_public_base
+{ "contributor_endpoint": "https://sears-island-contributors.<subdomain>.workers.dev" }
+```
+
+```bash
+# .env, and the same two as repository Actions secrets
+SIF_WORKER_URL=https://sears-island-contributors.<subdomain>.workers.dev
+SIF_PIPELINE_TOKEN=sif_...        # the `pipeline` role token, nothing more
+SIF_ADMIN_TOKEN=sif_...           # local only — minting and revoking
+```
+
+Add `SIF_WORKER_URL` and `SIF_PIPELINE_TOKEN` under *Settings → Secrets and
+variables → Actions*. **`deploy.yml` still holds no credentials and must stay that
+way** — it only rebuilds HTML from committed JSON, and the contributor endpoint is
+a tracked config value precisely so that stays true.
+
+Day to day, the pipeline does this on every tick; by hand it is:
+
+```bash
+python3 scripts/plantdb.py inbox-pull          # preview — always safe
+python3 scripts/plantdb.py inbox-pull --yes    # apply
+```
+
+Like `sheet-pull`, it previews by default and stops rather than applying more than
+two withdrawals at once. A field app makes withdrawing one tap, so if anything
+that guard matters more here.
+
+Everything contributor mode does is also available without it, because a
+capability that exists only behind a deployed Worker is how a project ends up
+unable to repair its own data when something is down:
+
+```bash
+python3 scripts/plantdb.py confirm   --file IMG_1234.jpg --by "J. Whitten" --status confirmed
+python3 scripts/plantdb.py redundant --file IMG_1235.jpg --of IMG_1234.jpg --by "J. Whitten"
+python3 scripts/plantdb.py redundant --file IMG_1235.jpg --unmark
+```
+
+### Where a verification came from, and one bug this fixed
+
+Verifications now record `via` — `sheet`, `cli` or `site`.
+
+This was not bookkeeping. `sheet-push` writes the sheet's own human columns back,
+so a verification made anywhere else never appeared in the STATUS column — and
+`sheet-pull` reads a blank STATUS against a stored verification as *withdraw it*.
+Every `plantdb.py confirm` on a record that was in the sheet was therefore
+retracted by the next unattended pull, usually within two hours, silently. The
+field app would have multiplied it.
+
+Two changes: a blank cell now only withdraws a verification that came from the
+sheet, and `sheet-push` mirrors verifications made elsewhere *into* the sheet's
+blank cells, so a steward sees every field check that exists rather than only the
+ones typed there. A steward's own entry is never overwritten.
 
 ## Screening
 
@@ -497,6 +755,7 @@ variables → Actions*:
 | `GOOGLE_DRIVE_FOLDER_ID` | the shared inbox folder |
 | `GOOGLE_SHEET_ID` | the steward review sheet |
 | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET` | as in `.env` |
+| `SIF_WORKER_URL`, `SIF_PIPELINE_TOKEN` | optional — [contributor mode](#contributor-mode-signing-in-on-the-site). The token is scoped to the `pipeline` role, which may collect the inbox and nothing else. |
 
 Trigger a first run by hand from the Actions tab (*Run workflow*) rather than
 waiting for the hour — it is the only way to find out whether a secret is wrong.
@@ -661,6 +920,9 @@ python3 scripts/plantdb.py batches      # batches submitted and not yet collecte
 python3 scripts/plantdb.py occurrences  # species-and-place groupings, not one row per photo
 python3 scripts/plantdb.py fieldwork    # what to go and check, and what would settle each
 python3 scripts/plantdb.py export-imap  # field-verified invasives, as an iMapInvasives CSV
+python3 scripts/plantdb.py inbox-pull   # apply what contributors submitted through the site
+python3 scripts/plantdb.py contributor add --name "…" --role verifier
+python3 scripts/plantdb.py redundant --file A.jpg --of B.jpg --by "…"  # mark a frame surplus
 python3 scripts/plantdb.py reconcile    # merge duplicate species, drop non-answers
 python3 scripts/plantdb.py verify       # data-quality check
 python3 scripts/plantdb.py publish      # build public/
@@ -728,6 +990,10 @@ infestations.
 species page. Only one of them represents the find in a list, with the others
 counted beside it ("7 photographs of this patch"). Grouping is a presentation rule,
 never a deletion.
+
+Grouping still *carries* all seven, though — hosted, shipped and shown. Deciding
+that six of them are surplus imagery is a separate, human judgement, and it is
+[contributor mode](#contributor-mode-signing-in-on-the-site) that records it.
 
 Records with no coordinates each stand alone. Without a location there is no way to
 know whether two photographs are the same plant, and merging on a guess would
@@ -825,6 +1091,7 @@ and would break silently.
 | `test_reconcile` | Merge, drop and orphan logic — and the three things it must never touch: a seed entry, the target of a field check, the `unknown` sentinel |
 | `test_steward_sheet` | What counts as a verification, and refusing a sheet whose columns moved |
 | `test_data_integrity` | Reads the committed data: the reference list and catalogue agree, nothing published is missing a location or date, no verification field is incomplete |
+| `test_contributor_inbox` | Who may write what — including that the unattended token cannot manufacture a field check, and that `worker/index.js` has not drifted from the table here. What a surplus mark may destroy: never the only record of another species in the frame |
 
 Writing these found a real hole: the hedge-word check ran *after* parentheticals
 were stripped, so "Fern (unidentified colony)" with a valid genus in `scientific`

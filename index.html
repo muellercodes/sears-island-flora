@@ -328,6 +328,63 @@
   .pop-back { width:100%; border:0; border-bottom:1px solid var(--line); background:var(--bg);
     color:var(--accent); padding:8px 10px; font:inherit; font-size:11.5px; font-weight:600;
     cursor:pointer; text-align:left; }
+
+  /* ---- contributor mode -------------------------------------------------
+     Everything here is prefixed cb- and nothing reuses a name already in this
+     file. That is not tidiness: `.shots` was already the photo grid when a
+     checklist reached for it, and the result was a field checklist silently laid
+     out in columns on the one screen it most needed to be readable on. */
+  .cb-bar { display:flex; align-items:center; gap:8px; margin-top:10px; font-size:13px;
+    color:var(--muted); flex-wrap:wrap; }
+  .cb-who { display:inline-flex; align-items:center; gap:7px; padding:5px 11px;
+    border-radius:999px; border:1px solid var(--accent); color:var(--accent);
+    background:color-mix(in srgb, var(--accent) 10%, transparent); font-weight:600; }
+  .cb-role { font-weight:400; opacity:.8; text-transform:lowercase; }
+  .cb-out { border:0; background:transparent; color:var(--muted); font:inherit;
+    font-size:12.5px; cursor:pointer; text-decoration:underline; padding:0; }
+  .cb-offline { color:var(--caution); }
+
+  .cb-panel { border:1px solid var(--accent); border-radius:12px; padding:14px 16px;
+    margin:0 0 18px; background:color-mix(in srgb, var(--accent) 6%, transparent); }
+  .cb-panel h4 { margin:0 0 10px; color:var(--accent); font-size:13px; font-weight:700;
+    text-transform:uppercase; letter-spacing:.06em; }
+  .cb-panel + .cb-panel { margin-top:-8px; }
+  .cb-grp { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:10px; }
+  /* Radios as tap targets. A steward is doing this one-handed, in gloves, on a
+     phone, in the rain — a 13px radio dot is not a control they can hit. */
+  .cb-grp label { display:inline-flex; align-items:center; gap:7px; padding:9px 13px;
+    border:1px solid var(--line); border-radius:9px; background:var(--panel);
+    font-size:14px; cursor:pointer; min-height:44px; }
+  .cb-grp label:has(input:checked) { border-color:var(--accent); color:var(--accent);
+    font-weight:600; }
+  .cb-panel textarea, .cb-panel select, .cb-panel input[type=file] {
+    width:100%; padding:10px 12px; border-radius:9px; border:1px solid var(--line);
+    background:var(--panel); color:var(--ink); font:inherit; font-size:15px;
+    margin-bottom:10px; }
+  .cb-panel textarea { min-height:74px; resize:vertical; }
+  .cb-btn { min-height:44px; padding:11px 18px; border-radius:9px; border:0;
+    background:var(--accent); color:var(--on-accent); font:inherit; font-size:15px;
+    font-weight:600; cursor:pointer; }
+  .cb-btn[disabled] { opacity:.5; cursor:default; }
+  .cb-btn.cb-ghost { background:transparent; color:var(--accent);
+    border:1px solid var(--accent); font-weight:500; }
+  .cb-hint { margin:8px 0 0; font-size:12.5px; color:var(--muted); line-height:1.5; }
+  .cb-said { margin:8px 0 0; font-size:13.5px; padding:9px 12px; border-radius:9px;
+    background:var(--panel); border:1px solid var(--line); }
+  .cb-said.cb-bad { border-color:var(--toxic); color:var(--toxic); }
+
+  /* Per-photograph surplus control, inside a .shot tile. */
+  .cb-mark { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;
+    padding-top:8px; border-top:1px solid var(--line); }
+  .cb-mark button { flex:1 1 auto; min-height:38px; padding:7px 10px; border-radius:8px;
+    border:1px solid var(--line); background:var(--panel); color:var(--muted);
+    font:inherit; font-size:12px; cursor:pointer; }
+  .cb-mark button:hover { border-color:var(--accent); color:var(--accent); }
+  .cb-rep { font-size:11px; text-transform:uppercase; letter-spacing:.05em;
+    color:var(--accent); font-weight:700; }
+  .cb-surplus { font-size:11px; text-transform:uppercase; letter-spacing:.05em;
+    color:var(--muted); font-weight:700; }
+  .shot.cb-is-surplus img { opacity:.45; }
 </style>
 </head>
 <body>
@@ -346,6 +403,11 @@
       </div>
     </div>
     <div class="chips" id="filters"></div>
+    <!-- Contributor mode. Empty and hidden for everyone who is not signed in,
+         which is almost every visitor: this is a public survey, and a sign-in
+         button on it would only invite people to wonder what they are missing.
+         Signing in happens by opening the one-time link a maintainer sent. -->
+    <div class="cb-bar" id="contrib" hidden></div>
   </div>
 </header>
 
@@ -814,6 +876,332 @@ function setPopup(html) {
 function pinShow(gid, idx, n = 1) { setPopup(detailHTML(gid, idx, n)); }
 function pinList(gid) { setPopup(listHTML(gid, byOccurrence(PIN[gid] || []))); }
 
+// ---- contributor mode ----------------------------------------------------
+// The site stays static. Everything below talks to a Cloudflare Worker that does
+// nothing but queue what a signed-in person submits, for the survey pipeline to
+// collect on the schedule it already runs. Nothing here writes to the survey, and
+// nothing here can: data/observations.json has exactly one writer and this is not
+// it. See worker/index.js.
+//
+// Absent endpoint, absent token, or a Worker that is down: every one of these
+// leaves the page exactly as it was for a reader. Contributor mode is additive or
+// it is nothing.
+const CB_API = (DB.contributor_endpoint || "").replace(/\/+$/, "");
+const CB_TOKEN_KEY = "sif.contributor.token";
+const CB_QUEUE_KEY = "sif.contributor.queue";
+let ME = null;          // {name, role, can:[...]} once /api/me answers
+let CB_UNITS = [];      // occurrences on the open sheet, so handlers can find one
+
+// localStorage throws outright in Safari's private mode rather than failing soft,
+// and a botanist's phone is exactly where that happens. Never let it take the page.
+const cbGet = k => { try { return localStorage.getItem(k) || ""; } catch (e) { return ""; } };
+const cbSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
+const can = c => !!(ME && ME.can && ME.can.includes(c));
+
+// Signing in is opening the one-time link a maintainer sent. The token is moved
+// straight out of the URL: it would otherwise sit in history, in a screenshot of
+// the address bar, and in the Referer header of every outbound link on the page.
+function cbClaimToken() {
+  const m = location.hash.match(/^#key=([A-Za-z0-9_-]{8,200})$/);
+  if (!m) return;
+  cbSet(CB_TOKEN_KEY, m[1]);
+  history.replaceState(null, "", location.pathname + location.search);
+}
+
+async function cbFetch(path, init = {}) {
+  const token = cbGet(CB_TOKEN_KEY);
+  if (!CB_API || !token) throw new Error("not signed in");
+  const headers = { Authorization: `Bearer ${token}`, ...(init.headers || {}) };
+  const r = await fetch(CB_API + path, { ...init, headers });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || `the endpoint answered ${r.status}`);
+  return data;
+}
+
+// Sears Island has patchy signal, and the whole point of this is that it is used
+// standing in front of the plant. A submission that cannot be sent is kept on the
+// device and sent when there is a connection — so the answer to "no bars" is a
+// short wait, not a lost field check and a wasted walk.
+//
+// Photographs are deliberately NOT queued: they are megabytes, localStorage is a
+// few, and a quota error that silently ate someone's photograph would be worse
+// than telling them plainly that this one needs a connection.
+function cbEnqueue(path, body) {
+  const q = JSON.parse(cbGet(CB_QUEUE_KEY) || "[]");
+  q.push({ path, body, at: new Date().toISOString() });
+  cbSet(CB_QUEUE_KEY, JSON.stringify(q));
+  cbHeader();
+}
+
+async function cbFlush() {
+  let q = JSON.parse(cbGet(CB_QUEUE_KEY) || "[]");
+  if (!q.length || !CB_API || !cbGet(CB_TOKEN_KEY)) return;
+  const left = [];
+  for (const item of q) {
+    try {
+      await cbFetch(item.path, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(item.body),
+      });
+    } catch (e) {
+      // A refusal on its merits (400/403) will never succeed however long it is
+      // kept, so it is dropped rather than retried forever. Anything that looks
+      // like the network is kept.
+      if (/answered 4\d\d/.test(e.message)) continue;
+      left.push(item);
+    }
+  }
+  cbSet(CB_QUEUE_KEY, JSON.stringify(left));
+  cbHeader();
+}
+
+function cbHeader() {
+  const el = $("contrib");
+  if (!el) return;
+  if (!ME) { el.hidden = true; el.innerHTML = ""; return; }
+  const queued = JSON.parse(cbGet(CB_QUEUE_KEY) || "[]").length;
+  el.hidden = false;
+  el.innerHTML = `<span class="cb-who">${esc(ME.name)}
+      <span class="cb-role">${esc(ME.role)}</span></span>
+    ${queued ? `<span class="cb-offline">${queued} waiting to send — they will go
+       when you have signal</span>` : ""}
+    <button class="cb-out" onclick="cbSignOut()">Sign out of this device</button>`;
+}
+
+function cbSignOut() {
+  const queued = JSON.parse(cbGet(CB_QUEUE_KEY) || "[]").length;
+  if (queued && !confirm(
+      `${queued} submission(s) on this device have not reached the survey yet. ` +
+      `Signing out discards them. Sign out anyway?`)) return;
+  try { localStorage.removeItem(CB_TOKEN_KEY); localStorage.removeItem(CB_QUEUE_KEY); } catch (e) {}
+  ME = null;
+  cbHeader();
+  if ($("sheet").open && sheetNow) openSheet(sheetNow, true);
+}
+
+async function cbInit() {
+  cbClaimToken();
+  if (!CB_API || !cbGet(CB_TOKEN_KEY)) return;
+  try {
+    ME = await cbFetch("/api/me");
+  } catch (e) {
+    // A revoked or mistyped token should not leave someone staring at a page that
+    // looks signed out for no stated reason.
+    if (/answered 401/.test(e.message)) {
+      try { localStorage.removeItem(CB_TOKEN_KEY); } catch (e2) {}
+      console.info("Contributor token is not recognised — signed out.");
+    }
+    return;
+  }
+  cbHeader();
+  await cbFlush();
+  if ($("sheet").open && sheetNow) openSheet(sheetNow, true);
+}
+window.addEventListener("online", () => { cbFlush(); });
+// Pasting the sign-in link into a tab that is already open changes the hash
+// without reloading, so boot has already been and gone. Without this, the link
+// silently does nothing for anyone who did not open it in a fresh tab.
+window.addEventListener("hashchange", () => { if (!ME) cbInit(); });
+
+// ---- what a signed-in person can do to one find --------------------------
+// Rendered per occurrence rather than per photograph, because an occurrence is
+// what a person actually stood in front of. Seven shots of one patch is one walk
+// and one verdict.
+function cbUnitPanel(s, u) {
+  if (!ME) return "";
+  const k = CB_UNITS.push(u) - 1;
+  const o = u.anchor, v = o.verified || {};
+  const done = VSTATE[v.status];
+
+  const already = done
+    ? `<p class="cb-said"><b>${esc(done.dot)} ${esc(done.label)}</b> by ${esc(v.by || "—")}${
+        v.date ? ` on ${esc(v.date)}` : ""}${
+        v.notes ? `<br>${esc(v.notes)}` : ""}</p>`
+    : "";
+
+  const check = can("verify") ? `
+    <div class="cb-panel">
+      <h4>${done ? "Change this field check" : "Record a field check"}</h4>
+      ${already}
+      <form onsubmit="return cbVerify(event, ${k})">
+        <div class="cb-grp">
+          ${["confirmed", "corrected", "rejected", "revisit"].map(st => `
+            <label><input type="radio" name="st${k}" value="${st}" required
+              onchange="cbToggleSpecies(${k})"> ${esc(VSTATE[st].label)}</label>`).join("")}
+        </div>
+        <select name="sp" id="cb-sp-${k}" hidden aria-label="What it actually is">
+          <option value="">— what it actually is —</option>
+          ${SPECIES.slice().sort((a, b) => a.common.localeCompare(b.common))
+            .map(x => `<option value="${esc(x.id)}">${esc(x.common)}</option>`).join("")}
+        </select>
+        <textarea name="notes" placeholder="What settled it — the feature you saw, how much of it, anything that surprised you."></textarea>
+        <button class="cb-btn" type="submit">${done ? "Replace the check" : "Record this check"}</button>
+        <p class="cb-hint">Recorded against <b>${esc(o.file)}</b>${
+          u.items.length > 1 ? ` and the ${u.items.length - 1} other photograph${
+            u.items.length === 2 ? "" : "s"} of this patch` : ""}.
+          Your name is taken from your sign-in, not typed — an unattributed
+          verification is not one.</p>
+      </form>
+      <div id="cb-msg-v${k}"></div>
+    </div>` : "";
+
+  const add = can("upload") ? `
+    <div class="cb-panel">
+      <h4>Add a photograph of this find</h4>
+      <form onsubmit="return cbUpload(event, ${k})">
+        <input type="file" name="photo" accept="image/*" capture="environment" required>
+        <textarea name="note" placeholder="Anything worth saying about this shot (optional)."></textarea>
+        <button class="cb-btn" type="submit">Send this photograph</button>
+        <p class="cb-hint">It goes through the same screening and identification as any
+          other photograph, and joins a find by where it was taken. Your phone's location
+          is sent with it and used <b>only</b> if the photograph itself arrives without
+          one — browsers usually strip that — and the record says which it used.
+          This one needs a connection; it is too big to hold on the device.</p>
+      </form>
+      <div id="cb-msg-u${k}"></div>
+    </div>` : "";
+
+  return check + add;
+}
+
+function cbToggleSpecies(k) {
+  const form = document.querySelector(`#cb-sp-${k}`).form;
+  const chosen = form.querySelector(`input[name="st${k}"]:checked`);
+  const sel = $(`cb-sp-${k}`);
+  sel.hidden = !chosen || chosen.value !== "corrected";
+  sel.required = !sel.hidden;
+}
+
+function cbSaid(id, text, bad) {
+  const el = $(id);
+  if (el) el.innerHTML = `<p class="cb-said${bad ? " cb-bad" : ""}">${esc(text)}</p>`;
+}
+
+// Every one of these says the same honest thing on success: it is recorded, and it
+// reaches the site on the next pipeline run. Claiming it had landed would be a lie
+// the reader could check — the page they are looking at is built from committed
+// JSON and will not change until that run.
+const CB_LANDED = "The survey picks this up on its next run, within about two hours.";
+
+async function cbVerify(ev, k) {
+  ev.preventDefault();
+  const form = ev.target, u = CB_UNITS[k];
+  const status = form.querySelector(`input[name="st${k}"]:checked`).value;
+  const body = {
+    file: u.anchor.file, status,
+    species_id: status === "corrected" ? form.sp.value : "",
+    notes: form.notes.value.trim(),
+  };
+  if (status === "corrected" && !body.species_id) {
+    return cbSaid(`cb-msg-v${k}`, "Say what it actually is.", true), false;
+  }
+  form.querySelector("button").disabled = true;
+  try {
+    await cbFetch("/api/verify", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    cbSaid(`cb-msg-v${k}`, `Recorded as ${VSTATE[status].label.toLowerCase()}. ${CB_LANDED}`);
+  } catch (e) {
+    if (/not signed in|Failed to fetch|NetworkError|answered 5\d\d/.test(e.message)) {
+      cbEnqueue("/api/verify", body);
+      cbSaid(`cb-msg-v${k}`, "No connection — kept on this phone and sent automatically "
+             + "when you have signal. Do not sign out before then.");
+    } else {
+      cbSaid(`cb-msg-v${k}`, e.message, true);
+      form.querySelector("button").disabled = false;
+    }
+  }
+  return false;
+}
+
+// The phone's fix, offered alongside the file. The pipeline uses it only when the
+// photograph itself has none, and stamps the record so the two can never be
+// confused: where someone stood when they pressed send is a different claim from
+// where the camera was when the shutter opened.
+function cbWhereAmI() {
+  return new Promise(res => {
+    if (!navigator.geolocation) return res(null);
+    const done = p => res({ lat: p.coords.latitude, lon: p.coords.longitude,
+                            accuracy_m: Math.round(p.coords.accuracy) });
+    navigator.geolocation.getCurrentPosition(done, () => res(null),
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 });
+  });
+}
+
+async function cbUpload(ev, k) {
+  ev.preventDefault();
+  const form = ev.target;
+  const file = form.photo.files[0];
+  if (!file) return false;
+  form.querySelector("button").disabled = true;
+  cbSaid(`cb-msg-u${k}`, "Finding your location, then sending…");
+  const fix = await cbWhereAmI();
+  const fd = new FormData();
+  fd.append("photo", file);
+  fd.append("filename", file.name || "field.jpg");
+  fd.append("note", form.note.value.trim());
+  if (fix) {
+    fd.append("lat", String(fix.lat));
+    fd.append("lon", String(fix.lon));
+    fd.append("accuracy_m", String(fix.accuracy_m));
+  }
+  if (file.lastModified) fd.append("taken", new Date(file.lastModified).toISOString().slice(0, 19));
+  try {
+    await cbFetch("/api/upload", { method: "POST", body: fd });
+    cbSaid(`cb-msg-u${k}`, `Sent${fix ? "" : " — but your device would not give a location, "
+      + "so unless the photograph carries its own the survey will hold it back"}. ${CB_LANDED}`);
+    form.reset();
+  } catch (e) {
+    cbSaid(`cb-msg-u${k}`, `${e.message}. Nothing was sent — try again when you have signal.`, true);
+  }
+  form.querySelector("button").disabled = false;
+  return false;
+}
+
+// ---- marking a photograph surplus ----------------------------------------
+// Deliberately a human judgement and never a similarity score. Two frames a
+// difference algorithm calls identical are routinely a habit shot and a close-up
+// of the one feature that settles the identification, and dropping the second
+// destroys the evidence for the first. So this offers no "find duplicates"
+// button: it shows the frames of one patch side by side and asks a person.
+function cbShotControls(o, u) {
+  if (!can("redundant") || u.items.length < 2) return "";
+  const k = CB_UNITS.indexOf(u);
+  if (o.is_redundant || o.redundant) {
+    return `<div class="cb-mark"><span class="cb-surplus">Surplus</span>
+      <button onclick="cbSurplus('${esc(o.file)}', null, ${k}, true)">Carry it again</button></div>`;
+  }
+  if (o.file === u.anchor.file) {
+    return `<div class="cb-mark"><span class="cb-rep">Represents this find</span></div>`;
+  }
+  return `<div class="cb-mark">
+    <button onclick="cbSurplus('${esc(o.file)}', '${esc(u.anchor.file)}', ${k}, false)">
+      Surplus to the first &rarr;</button></div>`;
+}
+
+async function cbSurplus(file, of, k, unmark) {
+  const u = CB_UNITS[k];
+  const body = { file, of: of || "", species_id: u ? spOf(u.anchor) : "", unmark };
+  try {
+    await cbFetch("/api/redundant", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    alert(unmark
+      ? `${file} will be carried again. ${CB_LANDED}`
+      : `${file} is marked surplus to ${of}. The photograph itself is kept — it stays `
+        + `in the archive and still counts towards this find. ${CB_LANDED}`);
+  } catch (e) {
+    if (/not signed in|Failed to fetch|NetworkError|answered 5\d\d/.test(e.message)) {
+      cbEnqueue("/api/redundant", body);
+      alert("No connection — kept on this phone and sent when you have signal.");
+    } else {
+      alert(`Refused: ${e.message}`);
+    }
+  }
+}
+
 // ---- detail sheet --------------------------------------------------------
 // Photo tiles. `secondary` = this species is visible in the shot but isn't its subject,
 // so we label what the photo was actually filed under.
@@ -824,12 +1212,13 @@ const speciesLink = id => SP[id]
   ? `<button class="xlink" data-id="${esc(id)}" onclick="openSheet(this.dataset.id)">${esc(SP[id].common)}</button>`
   : esc(id);
 
-function shotGrid(list, s, secondary = false) {
+function shotGrid(list, s, secondary = false, unit = null) {
   return `<div class="shots">${list.map(o => {
     const subject = SP[o.species_id];
     // Everything else identified in this frame, minus whoever's sheet we are on.
     const others = (o.also || []).filter(x => x !== s.id && x !== o.species_id && SP[x]);
-    return `<figure class="shot" style="margin:0">
+    const surplus = o.is_redundant || o.redundant;
+    return `<figure class="shot${surplus ? " cb-is-surplus" : ""}" style="margin:0">
       <img loading="lazy" src="${esc(thumbSrc(o))}" data-full="${esc(thumbSrc(o))}" alt="${esc(s.common)}">
       <figcaption class="cap">
         ${secondary
@@ -843,6 +1232,10 @@ function shotGrid(list, s, secondary = false) {
         <div style="margin-top:6px">${vBadge(o)}</div>
         ${(o.verified || {}).notes
             ? `<div style="margin-top:4px;opacity:.85"><b>In the field:</b> ${esc(o.verified.notes)}</div>` : ""}
+        ${o.location_source === "field-device"
+            ? `<div style="margin-top:4px;opacity:.75">Location from the contributor's
+               device at upload, not from the photograph</div>` : ""}
+        ${unit ? cbShotControls(o, unit) : ""}
       </figcaption>
     </figure>`;
   }).join("")}</div>`;
@@ -896,6 +1289,7 @@ function helpHTML(s) {
 
 function openSheet(id, isBack = false) {
   const s = SP[id]; if (!s) return;
+  CB_UNITS = [];       // handlers find their occurrence by index into this
   // Arriving from the list or the map is a fresh start, so the trail resets HERE
   // rather than on the dialog's `close` event — that event fires asynchronously,
   // and a close followed by an open in the same tick would still show the old
@@ -952,13 +1346,24 @@ function openSheet(id, isBack = false) {
           // repeated evidence of one find rather than several finds.
           // Every patch is labelled as soon as there is more than one, or a lone
           // photograph after a headed group reads as part of that group.
-          return (many && x ? `<p class="patch">${u.items.length} photograph${
-              u.items.length === 1 ? "" : "s"} of one patch at ${
+          // A patch that has had frames marked surplus says so, or its photograph
+          // count silently contradicts the record of how much evidence there is.
+          const surplus = x && x.surplus ? x.surplus : 0;
+          // The CARRIED count, not the number of tiles. Published data has no
+          // surplus records in it so the two are the same there, but a local
+          // build keeps them (dimmed, badged) — and "7 photographs … 1 further
+          // marked surplus" over seven tiles reads as eight.
+          const shown = x ? x.n : u.items.length;
+          return (many && x ? `<p class="patch">${shown} photograph${
+              shown === 1 ? "" : "s"} of one patch at ${
               x.lat.toFixed(5)}, ${x.lon.toFixed(5)}${
               u.items.length > 1 && x.spread_m >= 1
                 ? ` · spread ~${Math.round(x.spread_m)} m` : ""}${
-              when ? ` · ${esc(when)}` : ""}</p>` : "")
-            + shotGrid(u.items, s);
+              when ? ` · ${esc(when)}` : ""}${
+              surplus ? ` · ${surplus} further frame${surplus === 1 ? "" : "s"} marked
+                surplus and not carried` : ""}</p>` : "")
+            + cbUnitPanel(s, u)
+            + shotGrid(u.items, s, false, u);
         }).join(""))(byOccurrence(shots))) : ""}
       ${also.length ? sec("Also seen in", `<p style="color:var(--muted);margin:0 0 12px;font-size:13.5px">
          ${shots.length ? "Photographed as part of another subject" : "No photo of its own yet"} — but visible
@@ -1010,6 +1415,9 @@ $("lightbox").onclick = () => $("lightbox").close();
   ].filter(Boolean).join(" · ");
   openWide($("safety"));
   render();
+  // Last, and never awaited: a reader with no token, no endpoint configured or no
+  // network gets exactly the page they got before any of this existed.
+  cbInit();
 })();
 </script>
 </body>
