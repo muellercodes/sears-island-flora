@@ -139,6 +139,13 @@
     font-size:13.5px; color:var(--muted); }
   .help .how b { color:var(--ink); }
   .pcount { font-size:12px; color:var(--muted); }
+  .patch { margin:14px 0 8px; font-size:12.5px; color:var(--muted);
+    padding-left:10px; border-left:2px solid var(--line); }
+  /* One card is one find. The badge says how many photographs stand behind it. */
+  .pcard { position:relative; }
+  .nphotos { position:absolute; top:8px; right:8px; z-index:1; font-size:11px;
+    font-weight:600; padding:3px 8px; border-radius:999px; color:var(--on-accent);
+    background:color-mix(in srgb, var(--deep) 72%, transparent); }
   .danger-flag { color:var(--toxic); font-weight:700; font-size:12px; }
 
   dialog { border:0; padding:0; background:transparent; max-width:920px; width:calc(100% - 32px); }
@@ -370,6 +377,27 @@ const OBS = DB.observations;
 // find. Grouped by species for the detail sheet.
 const OCC = {};
 (DB.occurrences || []).forEach(o => (OCC[o.species_id] ||= []).push(o));
+// Which occurrence a photograph belongs to, for a given species. Keyed by both,
+// because one photograph can evidence several species — its subject plus anything
+// identified behind it — and belongs to a different patch of each.
+const OCC_OF = {};
+(DB.occurrences || []).forEach(x =>
+  x.files.forEach(f => (OCC_OF[`${x.species_id}|${f}`] = x)));
+const occOf = o => OCC_OF[`${spOf(o)}|${o.file}`] || null;
+
+// Collapse photographs into the things they are photographs OF. Seven shots of one
+// willowherb patch are one find, and showing them as seven is exactly the
+// conflation the occurrence model exists to end.
+function byOccurrence(records) {
+  const seen = new Map();
+  records.forEach(o => {
+    const x = occOf(o);
+    const k = x ? `${spOf(o)}@${x.lat},${x.lon}` : `solo|${o.file}`;
+    if (seen.has(k)) seen.get(k).items.push(o);
+    else seen.set(k, { anchor: o, items: [o], occ: x });
+  });
+  return [...seen.values()];
+}
 const byS = {};       // photos where this species is the main subject
 const alsoS = {};     // photos where it's visible but not the subject — still a real record of it growing there
 const spOf = o => o.effective_species_id || o.species_id;   // human verdict wins
@@ -501,8 +529,10 @@ function render() {
   } else {
     const ok = new Set(list.map(s => s.id));
     const shots = OBS.filter(o => ok.has(o.species_id));
-    $("count").textContent = `${shots.length} photos`;
-    $("view").innerHTML = shots.length ? `<div class="photo-grid">${shots.map(photoHTML).join("")}</div>`
+    const units = byOccurrence(shots);
+    $("count").textContent = `${units.length} find${units.length === 1 ? "" : "s"} · ${shots.length} photos`;
+    $("view").innerHTML = units.length
+      ? `<div class="photo-grid">${units.map(u => photoHTML(u.anchor, u.items.length)).join("")}</div>`
       : `<p class="empty">Nothing matches that.</p>`;
     $("view").querySelectorAll(".pcard").forEach(c => c.onclick = () => openSheet(c.dataset.id));
   }
@@ -531,9 +561,10 @@ function cardHTML(s) {
     </div></button>`;
 }
 
-function photoHTML(o) {
+function photoHTML(o, n = 1) {
   const s = SP[o.species_id] || SP.unknown;
   return `<button class="pcard" data-id="${o.species_id}">
+    ${n > 1 ? `<span class="nphotos">${n} photos of this patch</span>` : ""}
     <img loading="lazy" src="${esc(thumbSrc(o))}" alt="${esc(s.common)}">
     <div class="cap"><div class="n">${esc(s.common)}</div>
       <div class="t">${esc(whenWhere(o))} · <span class="conf-${o.confidence}">${esc(o.confidence)}</span></div>
@@ -660,11 +691,14 @@ function drawMarkers() {
   markers.clearLayers();
   PIN = [];
   const z = map.getZoom();
+  // Two levels, and the order matters. An occurrence is one find at ANY zoom, so it
+  // is collapsed before the pixel test — otherwise seven photographs two metres
+  // apart split back into seven pins as soon as you zoom in far enough.
   const groups = [];
-  mapped.forEach(o => {
-    const p = map.project(llOf(o), z);
+  byOccurrence(mapped).forEach(u => {
+    const p = map.project(llOf(u.anchor), z);
     const g = groups.find(g => g.p.distanceTo(p) < MERGE_PX);
-    if (g) g.items.push(o); else groups.push({ p, items: [o] });
+    if (g) g.items.push(...u.items); else groups.push({ p, items: [...u.items] });
   });
 
   groups.forEach(g => {
@@ -883,7 +917,22 @@ function openSheet(id, isBack = false) {
       ${sec("How to know it", ul(s.id_marks))}
       ${sec("Cautions", ul(s.cautions))}
       ${sec("Lookalikes to rule out", ul(s.lookalikes))}
-      ${shots.length ? sec("Photos", shotGrid(shots, s)) : ""}
+      ${shots.length ? sec("Photos", ((gs) => gs.map(u => {
+          const x = u.occ, many = u.items.length > 1 || gs.length > 1;
+          const when = x && x.first_seen !== x.last_seen
+            ? `${x.first_seen} – ${x.last_seen}` : (x ? x.first_seen : "");
+          // One heading per patch, so a run of near-identical shots reads as
+          // repeated evidence of one find rather than several finds.
+          // Every patch is labelled as soon as there is more than one, or a lone
+          // photograph after a headed group reads as part of that group.
+          return (many && x ? `<p class="patch">${u.items.length} photograph${
+              u.items.length === 1 ? "" : "s"} of one patch at ${
+              x.lat.toFixed(5)}, ${x.lon.toFixed(5)}${
+              u.items.length > 1 && x.spread_m >= 1
+                ? ` · spread ~${Math.round(x.spread_m)} m` : ""}${
+              when ? ` · ${esc(when)}` : ""}</p>` : "")
+            + shotGrid(u.items, s);
+        }).join(""))(byOccurrence(shots))) : ""}
       ${also.length ? sec("Also seen in", `<p style="color:var(--muted);margin:0 0 12px;font-size:13.5px">
          ${shots.length ? "Photographed as part of another subject" : "No photo of its own yet"} — but visible
          in ${also.length === 1 ? "this shot" : "these shots"}, so ${also.length === 1 ? "it's" : "they're"}
