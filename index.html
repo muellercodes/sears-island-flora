@@ -110,6 +110,32 @@
     border-radius:10px; padding:13px 16px; margin:0 0 20px; font-size:14px; }
   .newflag h4 { margin:0 0 6px; color:var(--caution); font-size:13px; text-transform:uppercase; letter-spacing:.05em; }
   .newflag p { margin:0; color:var(--ink); }
+
+  /* The call for help. A lead only becomes a finding when somebody walks out and
+     looks, and most people who could do that will never open a terminal — so the
+     instructions have to live where they are already reading. */
+  .help { border:1px solid var(--accent); border-radius:12px; padding:14px 16px;
+    margin:0 0 20px; background:color-mix(in srgb, var(--accent) 8%, transparent); }
+  .help h4 { margin:0 0 4px; color:var(--accent); font-size:13px; font-weight:700;
+    text-transform:uppercase; letter-spacing:.05em; }
+  .help .lede { margin:0 0 12px; font-size:14px; color:var(--ink); }
+  .help h5 { margin:14px 0 6px; font-size:12.5px; text-transform:uppercase;
+    letter-spacing:.05em; color:var(--muted); }
+  .help ul { margin:0; padding-left:0; list-style:none; }
+  .help ul li { position:relative; padding:4px 0 4px 26px; font-size:14px; line-height:1.45; }
+  /* An empty box reads as a task in a way a bullet does not. */
+  .help ul.shots li::before { content:""; position:absolute; left:0; top:8px;
+    width:14px; height:14px; border:1.5px solid var(--accent); border-radius:3px; }
+  .help ul.rule li::before { content:"✕"; position:absolute; left:2px; top:4px;
+    color:var(--toxic); font-size:12px; font-weight:700; }
+  .help .where { display:flex; flex-wrap:wrap; gap:8px; margin-top:6px; }
+  .help .where a { display:inline-block; padding:6px 11px; border-radius:8px;
+    border:1px solid var(--line); background:var(--panel); font-size:13px;
+    text-decoration:none; }
+  .help .where a:hover { border-color:var(--accent); }
+  .help .how { margin:14px 0 0; padding-top:12px; border-top:1px solid var(--line);
+    font-size:13.5px; color:var(--muted); }
+  .help .how b { color:var(--ink); }
   .pcount { font-size:12px; color:var(--muted); }
   .danger-flag { color:var(--toxic); font-weight:700; font-size:12px; }
 
@@ -337,6 +363,11 @@ const SP = Object.fromEntries(DB.species.map(s => [s.id, s]));
 // card reading "Unidentified / Habitat shot" among the survey's actual findings.
 const SPECIES = DB.species.filter(s => s.id !== "unknown");
 const OBS = DB.observations;
+// Occurrences — one species growing in one place, computed at publish time so the
+// checklist a volunteer reads and the record the state receives describe the same
+// find. Grouped by species for the detail sheet.
+const OCC = {};
+(DB.occurrences || []).forEach(o => (OCC[o.species_id] ||= []).push(o));
 const byS = {};       // photos where this species is the main subject
 const alsoS = {};     // photos where it's visible but not the subject — still a real record of it growing there
 const spOf = o => o.effective_species_id || o.species_id;   // human verdict wins
@@ -764,6 +795,42 @@ function sheetBack() {
   if (prev) openSheet(prev, true);
 }
 
+// Everything a volunteer needs to settle one of these without ever opening a
+// terminal: where it is, what to photograph, what would rule it out, and what to
+// do with the pictures afterwards. Only shown where it is actually actionable —
+// something regulated or invasive that nobody has checked yet.
+function helpHTML(s) {
+  const pending = (OCC[s.id] || []).filter(o => !o.confirmed);
+  const urgent = ["regulated", "invasive"].includes(statusOf(s));
+  if (!pending.length || !urgent) return "";
+
+  const marks = (s.id_marks || []).map(m => `<li>${esc(m)}</li>`).join("");
+  const rule = (s.lookalikes || []).map(m => `<li>${esc(m)}</li>`).join("");
+  const spots = pending.map(o => {
+    const n = o.n === 1 ? "1 photo" : `${o.n} photos`;
+    return `<a href="https://www.google.com/maps/search/?api=1&query=${o.lat},${o.lon}"
+       target="_blank" rel="noopener">${o.lat.toFixed(5)}, ${o.lon.toFixed(5)} · ${n}</a>`;
+  }).join("");
+
+  return `<div class="help">
+    <h4>${statusOf(s) === "regulated" ? "Regulated — needs checking" : "Needs checking"}</h4>
+    <p class="lede">This was identified from a photograph and <b>nobody has confirmed it
+      on the ground</b>. If you are on the island, you can settle it.</p>
+
+    <h5>Where</h5>
+    <div class="where">${spots}</div>
+
+    ${marks ? `<h5>Photograph each of these</h5><ul class="shots">${marks}</ul>` : ""}
+    ${rule ? `<h5>Rule out — if one of these fits better, say so</h5>
+              <ul class="rule">${rule}</ul>` : ""}
+
+    <p class="how"><b>Then add your photos to the shared folder.</b> Include something
+      for scale — a hand, a boot, a pen — and take a wide shot as well as the close-ups.
+      Pictures taken within about 10 m of the spot join this record automatically, so
+      leave location services on and they will land in the right place.</p>
+  </div>`;
+}
+
 function openSheet(id, isBack = false) {
   const s = SP[id]; if (!s) return;
   // Arriving from the list or the map is a fresh start, so the trail resets HERE
@@ -802,6 +869,7 @@ function openSheet(id, isBack = false) {
       </div>
     </div>
     <div class="sheet-body">
+      ${helpHTML(s)}
       ${isAuto(s) ? `<div class="newflag"><h4>AI-identified</h4><p>This entry was written
          automatically from the photo — including the edibility verdict below. Have an adult who
          knows plants confirm it before anyone eats anything.</p></div>` : ""}

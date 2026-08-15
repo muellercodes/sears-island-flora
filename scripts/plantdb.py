@@ -300,6 +300,23 @@ def occurrences(obs, radius=OCCURRENCE_RADIUS_M):
     return out
 
 
+def occurrence_payload(obs):
+    """Occurrences, trimmed to what the site needs to ask someone for help.
+
+    The app cannot recompute this: clustering lives in one place so the checklist a
+    volunteer reads and the record the state receives describe the same find.
+    """
+    return [{"species_id": x["species_id"],
+             "lat": round(x["lat"], 6), "lon": round(x["lon"], 6),
+             "n": len(x["members"]), "spread_m": round(x["spread_m"], 1),
+             "first_seen": x["first_seen"], "last_seen": x["last_seen"],
+             "confirmed": x["confirmed"], "confirmed_by": x["confirmed_by"],
+             "checked_on": x["checked_on"],
+             "confirming_photos": len(x["confirming_photos"]),
+             "files": [o["file"] for o in x["members"]]}
+            for x in occurrences(obs)]
+
+
 def _occurrence(sid, members):
     """One occurrence, summarised. `anchor` is the earliest photograph — the one to
     name when confirming, and stable while it exists."""
@@ -667,6 +684,7 @@ def cmd_build(args):
     # count as recorded here — locally they are exactly what you are checking.
     species = recorded_species(species, obs)
     payload = {"species": species, "observations": obs,
+               "occurrences": occurrence_payload(obs),
                "generated": datetime.datetime.now().strftime("%Y-%m-%d %H:%M")}
     notice = load(PUBCFG_F, {}).get("notice")
     if notice:
@@ -874,6 +892,9 @@ def cmd_publish(args):
         o["thumb"] = f"{base}/{prefix}/{o['file']}" if base else f"thumbs/{o['file']}"
     species = recorded_species(enriched_species(), kept)
     payload = {"species": species, "observations": kept,
+               # Built from the PUBLISHED set: a withheld photograph is not evidence
+               # anyone can act on, so it must not appear in a call for help either.
+               "occurrences": occurrence_payload(kept),
                "generated": datetime.datetime.now().strftime("%Y-%m-%d %H:%M")}
     if cfg.get("notice"):
         payload["notice"] = cfg["notice"]
