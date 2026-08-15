@@ -1024,8 +1024,30 @@ def cmd_build(args):
         o["is_redundant"] = is_redundant(o)
     # Tell the app where each thumbnail actually lives, so it doesn't have to know
     # the tracked/local split. publish() overwrites this with the published layout.
+    #
+    # Prefer a local thumbnail, fall back to the hosted one. This used to point at
+    # thumbs/ unconditionally, which was right when every photo was ingested on the
+    # same laptop and wrong ever since: the pipeline runs in Actions, thumbs/ is
+    # gitignored, and a clone therefore has almost none of them. `serve` showed a
+    # page of broken images and looked exactly like data loss, when in fact every
+    # one of them was hosted and fine.
+    #
+    # Local first, not R2 first, so a machine that DOES have the thumbnails still
+    # previews offline and without egress.
+    cfg = load(PUBCFG_F, {})
+    base = (cfg.get("r2_public_base") or "").rstrip("/")
+    prefix = (cfg.get("r2_prefix") or "thumbs").strip("/")
+    hosted = set(load(R2_MANIFEST, {}))
+    missing = 0
     for o in obs:
-        o["thumb"] = f"{thumb_dir(o).name}/{o['file']}"
+        local = thumb_path(o)
+        if local.exists():
+            o["thumb"] = f"{thumb_dir(o).name}/{o['file']}"
+        elif base and not o.get("local_only") and o["file"] in hosted:
+            o["thumb"] = f"{base}/{prefix}/{o['file']}"
+        else:
+            o["thumb"] = f"{thumb_dir(o).name}/{o['file']}"
+            missing += 1
     DATA_JS.parent.mkdir(parents=True, exist_ok=True)
     # Same filter publish applies, so previewing with `serve` shows what a reader
     # will see rather than the full identification vocabulary. Local-only records
@@ -1047,6 +1069,29 @@ def cmd_build(args):
     n_local = sum(1 for o in obs if o.get("local_only"))
     extra = f" ({n_local} local-only, never published)" if n_local else ""
     print(f"Built {DATA_JS.relative_to(ROOT)} — {len(species)} species, {len(obs)} photos{extra}.")
+    n_hosted = sum(1 for o in obs if str(o.get("thumb", "")).startswith("http"))
+    if n_hosted:
+        print(f"  {n_hosted} image(s) load from R2 — not on this machine, which is "
+              f"normal when the pipeline runs in Actions.")
+    if missing:
+        # Split the two cases, because they mean opposite things. A WITHHELD record
+        # with no image is expected: it is not published, so nothing ever uploaded
+        # its thumbnail, and it only looks broken in this local preview — which
+        # shows everything, including what the site deliberately does not carry.
+        # A PUBLISHABLE one with no image anywhere is a real fault, and the one
+        # `publish` already refuses to ship on.
+        gone = [o for o in obs if not str(o.get("thumb", "")).startswith("http")
+                and not thumb_path(o).exists()]
+        real = [o for o in gone if is_publishable(o)]
+        held = len(gone) - len(real)
+        if held:
+            print(f"  {held} withheld record(s) have no image here — expected: they are "
+                  f"not published,\n    so no thumbnail was ever hosted. They show as gaps "
+                  f"in this local preview only.")
+        if real:
+            print(f"  ! {len(real)} PUBLISHED record(s) have no image here and none on "
+                  f"R2. `publish` will\n    refuse to ship rather than emit broken images. "
+                  f"Re-ingest them:\n      python3 scripts/plantdb.py ingest-drive")
 
 
 RANK = {"regulated": 0, "invasive": 1, "unknown": 2, "introduced": 3, "native": 4}
