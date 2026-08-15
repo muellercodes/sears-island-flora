@@ -276,6 +276,9 @@
   .mk.s-regulated{border-color:var(--toxic)} .mk.s-invasive{border-color:var(--caution)}
   .mk.s-introduced{border-color:var(--med)} .mk.s-native{border-color:var(--edible)}
   .mk-wrap { position:relative; width:44px; height:44px; }
+  /* How many locations this pin holds, when nearby ones merge. Every pin counts
+     for at least 1, so the pins plus their badges add up to the number on the
+     chip above — that is the whole reason the chip counts locations. */
   .mk-wrap .cnt { position:absolute; right:-5px; top:-5px; background:var(--ink); color:var(--bg);
     font-size:11px; font-weight:700; min-width:19px; height:19px; border-radius:10px;
     display:flex; align-items:center; justify-content:center; padding:0 4px;
@@ -457,7 +460,7 @@
        before being reported to anyone.</p>
   </details>
 
-  <p class="count" id="count"></p>
+  <p class="count" id="count" title="A find is one species growing in one place. One species can be several finds — goldenrod grows in four separate spots here — and one find can rest on several photographs of the same patch."></p>
   <div id="view"></div>
 
   <footer><p id="updated"></p></footer>
@@ -505,11 +508,19 @@ function shownAs(o, ok) {
 function byOccurrence(records, ok) {
   const seen = new Map();
   records.forEach(o => {
-    const sid = shownAs(o, ok);
-    const x = OCC_OF[`${sid}|${o.file}`] || null;
-    const k = x ? `${sid}@${x.lat},${x.lon}` : `solo|${sid}|${o.file}`;
-    if (seen.has(k)) seen.get(k).items.push(o);
-    else seen.set(k, { anchor: o, items: [o], occ: x, species_id: sid });
+    // EVERY matching species this photograph evidences, not just the first. One
+    // frame can be a record of several plants at once — a fifth of these carry a
+    // second species in the background — and each is its own find at that spot.
+    // Taking only the first lost one whenever a single photograph caught two
+    // species of the same status: plantain and dandelion share a frame here, and
+    // the map showed 9 introduced locations where the data has 10.
+    const sids = [...new Set([spOf(o), ...(o.also || [])])].filter(s => !ok || ok.has(s));
+    (sids.length ? sids : [spOf(o)]).forEach(sid => {
+      const x = OCC_OF[`${sid}|${o.file}`] || null;
+      const k = x ? `${sid}@${x.lat},${x.lon}` : `solo|${sid}|${o.file}`;
+      if (seen.has(k)) seen.get(k).items.push(o);
+      else seen.set(k, { anchor: o, items: [o], occ: x, species_id: sid });
+    });
   });
   return [...seen.values()];
 }
@@ -593,16 +604,29 @@ function dateSpan(list) {
 }
 
 // ---- filters -------------------------------------------------------------
-// The number on a chip is a count of SPECIES, which is the only thing it can be —
-// a chip filters the catalogue. Everything below it counts finds and photographs.
-// Three units on one screen is exactly the confusion this survey should not
-// create, so each chip says which one it is rather than leaving a bare number to
-// be read as records.
+// A chip counts LOCATIONS, not species, so that it matches what the map draws:
+// the pins plus their badges add up to exactly this number.
+//
+// Species was the intuitive choice and it cannot be made to agree. One species
+// growing in four separate places is four pins — goldenrod is, here — so a chip
+// reading "20" over a map totalling 32 looks like a bug every time, however
+// correct both numbers are. A filter's number should predict what you are about
+// to see, and what you see is places. The species count is on the line below,
+// where it can sit next to the location count and explain the difference.
+const LOCATIONS = {};
+(DB.occurrences || []).forEach(x => {
+  const sp = SP[x.species_id];
+  if (!sp || x.species_id === "unknown") return;
+  const k = statusOf(sp);
+  LOCATIONS[k] = (LOCATIONS[k] || 0) + 1;
+});
 $("filters").innerHTML = ORDER.map(k => {
-  const n = SPECIES.filter(s => statusOf(s) === k).length;
+  const n = LOCATIONS[k] || 0;
+  const sp = SPECIES.filter(s => statusOf(s) === k).length;
   return n ? `<button class="chip ${STATUS[k].chip}" data-k="${k}" aria-pressed="false"
-    title="${n} ${STATUS[k].label.toLowerCase()} species in the catalogue — the counts below are finds">${
-    STATUS[k].label} <span style="opacity:.6">${n} sp.</span></button>` : "";
+    title="${n} place${n === 1 ? "" : "s"} on the island where ${
+      sp === 1 ? "this species was" : `one of ${sp} ${STATUS[k].label.toLowerCase()} species was`
+    } recorded">${STATUS[k].label} <span style="opacity:.6">${n}</span></button>` : "";
 }).join("");
 $("filters").onclick = e => {
   const b = e.target.closest(".chip"); if (!b) return;
@@ -659,6 +683,7 @@ function render() {
   if (mode === "species") {
     $("count").textContent = `${list.length} species · ${
       list.reduce((n, s) => n + (byS[s.id] || []).length, 0)} photographs`;
+    // (no location count here — this view is the catalogue, one card per species)
     $("view").innerHTML = list.length ? `<div class="grid">${list.map(cardHTML).join("")}</div>`
       : `<p class="empty">Nothing matches that.</p>`;
     $("view").querySelectorAll(".card").forEach(c => c.onclick = () => openSheet(c.dataset.id));
@@ -673,14 +698,28 @@ function render() {
   // screen reported three different numbers for the same survey.
   const units = byOccurrence(shots, ok);
   const located = units.filter(u => hasLoc(u.anchor));
-  const tally = (us) => `${us.length} find${us.length === 1 ? "" : "s"} · ${
-    us.reduce((n, u) => n + u.items.length, 0)} photograph${
-    us.reduce((n, u) => n + u.items.length, 0) === 1 ? "" : "s"}`;
+  // Say how the two numbers relate, or they read as a contradiction. A chip says
+  // "Native 20 sp." and the map draws pins summing to 32, and nothing on screen
+  // explains that one species growing in four separate places is four finds —
+  // goldenrod does exactly that, and milkweed, ferns, jewelweed and oak are each
+  // in three. That IS the occurrence model working; it just looked like an error.
+  // Only stated when the two differ, since identical numbers explain themselves.
+  // Species first, because that is the number on the chip the reader just clicked,
+  // and then "locations" rather than "finds". One goldenrod species growing in four
+  // separate spots is four locations — obvious said that way, and a contradiction
+  // said as "20 species / 32 finds". The jargon stays in the code and the data;
+  // the page does not need it.
+  const tally = (us) => {
+    const photos = us.reduce((n, u) => n + u.items.length, 0);
+    const species = new Set(us.map(u => u.species_id)).size;
+    return `${species} species · ${us.length} location${us.length === 1 ? "" : "s"}`
+      + ` · ${photos} photograph${photos === 1 ? "" : "s"}`;
+  };
 
   if (mode === "map") {
     const adrift = units.length - located.length;
     $("count").textContent = tally(located)
-      + (adrift ? ` · ${adrift} more without coordinates` : "");
+      + (adrift ? ` · ${adrift} more with no coordinates` : "");
     renderMap(located, adrift);
   } else {
     $("count").textContent = tally(units);
@@ -758,7 +797,18 @@ let mapped = [];   // located records currently on the map
 // has laid the element out — so Leaflet measures a zero-size container, picks zoom
 // 0, and every record collapses into one pin. Waiting two animation frames
 // guarantees layout; the ResizeObserver covers the container changing size later.
-const nextFrame = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+// Wait for a paint before measuring the map container — but never wait forever.
+// requestAnimationFrame does not fire in a backgrounded or hidden tab, so a map
+// first rendered while the tab was in the background stayed uninitialised until
+// something else forced a render. The timeout is the escape hatch: worst case the
+// size is measured a beat early and `watchMapSize` corrects it, which is exactly
+// what that observer is already there for.
+const nextFrame = () => new Promise(r => {
+  let done = false;
+  const go = () => { if (!done) { done = true; r(); } };
+  requestAnimationFrame(() => requestAnimationFrame(go));
+  setTimeout(go, 250);
+});
 let mapRO = null, fitted = false;
 
 function renderMap(located, unlocated) {
@@ -770,7 +820,7 @@ function renderMap(located, unlocated) {
     map = markers = null;
   }
   $("map-note").textContent = unlocated
-    ? `${unlocated} find${unlocated === 1 ? " has" : "s have"} no coordinates and can't be mapped.`
+    ? `${unlocated} record${unlocated === 1 ? " has" : "s have"} no coordinates and can't be mapped.`
     : "";
 
   if (!located.length) {
