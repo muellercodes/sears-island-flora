@@ -157,6 +157,29 @@ describe("what the numbers on screen mean", () => {
     assert.deepEqual(S.tally(units), { species: 1, locations: 2, photographs: 3 });
   });
 
+  test("REGRESSION: a photograph is counted once, however many plants are in it", () => {
+    // Once a frame produced a find per species it evidences — which it must, or
+    // a background-only species has no location — summing items across units
+    // counted one photograph once per plant in it. The page said 96 photographs
+    // over a survey of 68, while the header beside it said 68.
+    const o = photo("a.jpg", "broadleaf-plantain", { also: ["dandelion", "rubus"] });
+    const units = S.byOccurrence([o], null,
+      index(occ("broadleaf-plantain", ["a.jpg"]), occ("dandelion", ["a.jpg"]),
+            occ("rubus", ["a.jpg"])));
+    assert.equal(units.length, 3, "three species means three finds");
+    assert.equal(S.tally(units).photographs, 1, "but only one photograph");
+  });
+
+  test("the same photograph in two finds of one species counts once", () => {
+    const far = { lat: String(LAT + 0.01), lon: String(LON + 0.01) };
+    const a = photo("a.jpg", "goldenrod");
+    const b = photo("b.jpg", "goldenrod", far);
+    const units = S.byOccurrence([a, b], null,
+      index(occ("goldenrod", ["a.jpg"]),
+            { ...occ("goldenrod", ["b.jpg"]), lat: LAT + 0.01, lon: LON + 0.01 }));
+    assert.equal(S.tally(units).photographs, 2);
+  });
+
   test("REGRESSION: a chip counts locations, so it can equal what the map draws", () => {
     // Species can never agree with the map: one species in four places is four
     // pins. The chip counts places, which is the only thing that can match.
@@ -287,6 +310,14 @@ describe("against the real published survey", () => {
       assert.ok(o.lat && o.lon, `${o.file} is published with no location`);
       assert.ok(o.taken, `${o.file} is published with no capture date`);
     }
+  });
+
+  guard("the photograph count never exceeds the survey's photographs", () => {
+    // The whole-survey view must agree with the data it is built from. Nothing
+    // on the page may claim more photographs than exist.
+    const index = S.indexOccurrences(DB.occurrences);
+    const units = S.byOccurrence(DB.observations, null, index);
+    assert.equal(S.tally(units).photographs, DB.observations.length);
   });
 
   guard("photograph counts on finds match the records behind them", () => {

@@ -88,14 +88,25 @@ const Survey = {
     return [...seen.values()];
   },
 
-  /** What the line under the filters says: species, locations, photographs.
-   *  Three different things, which is why they are named rather than left as
-   *  bare numbers for a reader to try to reconcile. */
+  /**
+   * What the line under the filters says: species, locations, photographs.
+   * Three different things, which is why they are named rather than left as bare
+   * numbers for a reader to try to reconcile.
+   *
+   * `photographs` counts DISTINCT files. Once a photograph began producing a
+   * find for every species it evidences — which it must, or a background-only
+   * species has no location — summing `items` across units counted one frame
+   * once per plant in it. The page claimed 96 photographs over a survey holding
+   * 68, and the header beside it said 68, so the site contradicted itself about
+   * the one number a reader can check by eye.
+   */
   tally(units) {
+    const files = new Set();
+    units.forEach((u) => u.items.forEach((o) => files.add(o.file)));
     return {
       species: new Set(units.map((u) => u.species_id)).size,
       locations: units.length,
-      photographs: units.reduce((n, u) => n + u.items.length, 0),
+      photographs: files.size,
     };
   },
 
