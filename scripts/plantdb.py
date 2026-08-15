@@ -10,7 +10,7 @@ Field Guide database tool.
 Ingest is safe to re-run: photos already in the library (matched by content hash)
 are skipped, so you can point it at the same folder repeatedly.
 """
-import argparse, hashlib, json, math, os, pathlib, re, shutil, subprocess, sys, datetime
+import argparse, errno, hashlib, json, math, os, pathlib, re, shutil, subprocess, sys, datetime
 from urllib.parse import quote
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -2364,7 +2364,24 @@ def cmd_serve(args):
             pass
 
     handler = functools.partial(H, directory=str(ROOT))
-    srv = http.server.ThreadingHTTPServer(("127.0.0.1", args.port), handler)
+    try:
+        srv = http.server.ThreadingHTTPServer(("127.0.0.1", args.port), handler)
+    except OSError as e:
+        if e.errno != errno.EADDRINUSE:
+            raise
+        # Almost always an earlier `serve` still running — this one is easy to
+        # start and easy to forget, and the bare traceback names neither the
+        # command that took the port nor a way out of it.
+        who = subprocess.run(["lsof", "-nP", f"-iTCP:{args.port}", "-sTCP:LISTEN"],
+                             capture_output=True, text=True).stdout.strip().splitlines()
+        print(f"Port {args.port} is already in use.")
+        for line in who[1:3]:
+            parts = line.split()
+            print(f"  held by pid {parts[1]} ({parts[0]})")
+        if len(who) > 1:
+            print(f"\nStop it:      kill {who[1].split()[1]}")
+        print(f"Or pick another port:   plantdb.py serve --port {args.port + 1}")
+        sys.exit(1)
     print(f"Serving {ROOT.name} at http://localhost:{args.port}/   (ctrl-c to stop)")
     print("Caching is disabled — just reload after a rebuild.")
     try:
