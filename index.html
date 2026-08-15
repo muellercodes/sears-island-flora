@@ -492,13 +492,24 @@ const occOf = o => OCC_OF[`${spOf(o)}|${o.file}`] || null;
 // Collapse photographs into the things they are photographs OF. Seven shots of one
 // willowherb patch are one find, and showing them as seven is exactly the
 // conflation the occurrence model exists to end.
-function byOccurrence(records) {
+// Which species a photograph is being SHOWN FOR. Usually its subject, but when a
+// filter is active it is whichever matching species this frame evidences — a photo
+// of rubus that also caught smooth-bedstraw is, under an "invasive" filter, a
+// record of the bedstraw, and grouping or labelling it as rubus would hide the
+// only record of the invasive there is.
+function shownAs(o, ok) {
+  if (!ok) return spOf(o);
+  return [spOf(o), ...(o.also || [])].find(s => ok.has(s)) || spOf(o);
+}
+
+function byOccurrence(records, ok) {
   const seen = new Map();
   records.forEach(o => {
-    const x = occOf(o);
-    const k = x ? `${spOf(o)}@${x.lat},${x.lon}` : `solo|${o.file}`;
+    const sid = shownAs(o, ok);
+    const x = OCC_OF[`${sid}|${o.file}`] || null;
+    const k = x ? `${sid}@${x.lat},${x.lon}` : `solo|${sid}|${o.file}`;
     if (seen.has(k)) seen.get(k).items.push(o);
-    else seen.set(k, { anchor: o, items: [o], occ: x });
+    else seen.set(k, { anchor: o, items: [o], occ: x, species_id: sid });
   });
   return [...seen.values()];
 }
@@ -531,6 +542,12 @@ const badgeOf = s => STATUS[statusOf(s)];
 const isAuto = s => typeof s.source === "string" && s.source.startsWith("auto");
 
 let mode = "map", query = "", active = new Set();
+// The species set the current view is showing FOR. The popups are built long
+// after render() returns — on click, and again on every zoom — so they cannot
+// be passed the filter and have to read it from somewhere. Without it a pin
+// found by an "Invasive" filter opened captioned with its photograph's
+// subject, which is how the survey's only invasive appeared as St John's Wort.
+let SHOWN_FOR = null;
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 // The build writes an explicit thumb path, because local-only records live in a
@@ -576,9 +593,16 @@ function dateSpan(list) {
 }
 
 // ---- filters -------------------------------------------------------------
+// The number on a chip is a count of SPECIES, which is the only thing it can be —
+// a chip filters the catalogue. Everything below it counts finds and photographs.
+// Three units on one screen is exactly the confusion this survey should not
+// create, so each chip says which one it is rather than leaving a bare number to
+// be read as records.
 $("filters").innerHTML = ORDER.map(k => {
   const n = SPECIES.filter(s => statusOf(s) === k).length;
-  return n ? `<button class="chip ${STATUS[k].chip}" data-k="${k}" aria-pressed="false">${STATUS[k].label} <span style="opacity:.6">${n}</span></button>` : "";
+  return n ? `<button class="chip ${STATUS[k].chip}" data-k="${k}" aria-pressed="false"
+    title="${n} ${STATUS[k].label.toLowerCase()} species in the catalogue — the counts below are finds">${
+    STATUS[k].label} <span style="opacity:.6">${n} sp.</span></button>` : "";
 }).join("");
 $("filters").onclick = e => {
   const b = e.target.closest(".chip"); if (!b) return;
@@ -618,25 +642,51 @@ function render() {
   const list = SPECIES.filter(matches)
     .sort((a, b) => ORDER.indexOf(statusOf(a)) - ORDER.indexOf(statusOf(b)) || a.common.localeCompare(b.common));
 
-  if (mode === "map") {
-    const ok = new Set(list.map(s => s.id));
-    const shots = OBS.filter(o => ok.has(o.species_id));
-    const located = shots.filter(hasLoc);
-    $("count").textContent = `${located.length} located record${located.length === 1 ? "" : "s"}`
-      + (shots.length - located.length ? ` · ${shots.length - located.length} without coordinates` : "");
-    renderMap(located, shots.length - located.length);
-  } else if (mode === "species") {
-    $("count").textContent = `${list.length} entries · ${list.reduce((n, s) => n + (byS[s.id] || []).length, 0)} photos`;
+  const ok = new Set(list.map(s => s.id));
+  SHOWN_FOR = ok;
+  // Every photograph evidencing a matching species — as its subject OR caught in
+  // the background. Filtering on the subject alone made an "Invasive" filter show
+  // nothing at all, because this survey's only invasive is smooth-bedstraw and it
+  // has never been the subject of a photograph: it appears behind a rubus cane.
+  // The README has said from the beginning that a background sighting counts and
+  // "for an invasive it may be the only record there is" — and it was the only
+  // record, and the filter hid it.
+  //
+  // `spOf`, not `species_id`, so a human correction decides which species a
+  // photograph counts towards.
+  const evidences = o => ok.has(spOf(o)) || (o.also || []).some(a => ok.has(a));
+
+  if (mode === "species") {
+    $("count").textContent = `${list.length} species · ${
+      list.reduce((n, s) => n + (byS[s.id] || []).length, 0)} photographs`;
     $("view").innerHTML = list.length ? `<div class="grid">${list.map(cardHTML).join("")}</div>`
       : `<p class="empty">Nothing matches that.</p>`;
     $("view").querySelectorAll(".card").forEach(c => c.onclick = () => openSheet(c.dataset.id));
+    return;
+  }
+
+  const shots = OBS.filter(evidences);
+  // ONE UNIT EVERYWHERE. The map, the photo grid and both counts are all in finds
+  // — a species growing in a place — with photographs quoted as the evidence
+  // behind them. They used to disagree: the map counted photographs, the photo
+  // grid counted finds, and the chips count species, so three surfaces on one
+  // screen reported three different numbers for the same survey.
+  const units = byOccurrence(shots, ok);
+  const located = units.filter(u => hasLoc(u.anchor));
+  const tally = (us) => `${us.length} find${us.length === 1 ? "" : "s"} · ${
+    us.reduce((n, u) => n + u.items.length, 0)} photograph${
+    us.reduce((n, u) => n + u.items.length, 0) === 1 ? "" : "s"}`;
+
+  if (mode === "map") {
+    const adrift = units.length - located.length;
+    $("count").textContent = tally(located)
+      + (adrift ? ` · ${adrift} more without coordinates` : "");
+    renderMap(located, adrift);
   } else {
-    const ok = new Set(list.map(s => s.id));
-    const shots = OBS.filter(o => ok.has(o.species_id));
-    const units = byOccurrence(shots);
-    $("count").textContent = `${units.length} find${units.length === 1 ? "" : "s"} · ${shots.length} photos`;
+    $("count").textContent = tally(units);
     $("view").innerHTML = units.length
-      ? `<div class="photo-grid">${units.map(u => photoHTML(u.anchor, u.items.length)).join("")}</div>`
+      ? `<div class="photo-grid">${units.map(u =>
+          photoHTML(u.anchor, u.items.length, u.species_id)).join("")}</div>`
       : `<p class="empty">Nothing matches that.</p>`;
     $("view").querySelectorAll(".pcard").forEach(c => c.onclick = () => openSheet(c.dataset.id));
   }
@@ -665,9 +715,11 @@ function cardHTML(s) {
     </div></button>`;
 }
 
-function photoHTML(o, n = 1) {
-  const s = SP[o.species_id] || SP.unknown;
-  return `<button class="pcard" data-id="${o.species_id}">
+function photoHTML(o, n = 1, sid = null) {
+  // `sid` is the species this card is standing for, which under a filter may be
+  // one caught in the background rather than the photograph's subject.
+  const s = SP[sid || spOf(o)] || SP.unknown;
+  return `<button class="pcard" data-id="${esc(s.id)}">
     ${n > 1 ? `<span class="nphotos">${n} photos of this patch</span>` : ""}
     <img loading="lazy" src="${esc(thumbSrc(o))}" alt="${esc(s.common)}">
     <div class="cap"><div class="n">${esc(s.common)}</div>
@@ -710,16 +762,28 @@ const nextFrame = () => new Promise(r => requestAnimationFrame(() => requestAnim
 let mapRO = null, fitted = false;
 
 function renderMap(located, unlocated) {
-  mapped = located;
-  if (!$("map")) {
+  mapped = located;              // FINDS, not photographs — see render()
+  // `!map` as well as `!$("map")`: the empty state above leaves the div in place
+  // with a message in it, so its mere presence no longer means a live map.
+  if (!$("map") || !map) {
     $("view").innerHTML = `<div id="map"></div><p class="map-note" id="map-note"></p>`;
     map = markers = null;
   }
   $("map-note").textContent = unlocated
-    ? `${unlocated} record${unlocated === 1 ? " has" : "s have"} no coordinates and can't be mapped.`
+    ? `${unlocated} find${unlocated === 1 ? " has" : "s have"} no coordinates and can't be mapped.`
     : "";
 
   if (!located.length) {
+    // Tear the map DOWN, do not just paint over it. Overwriting #map's innerHTML
+    // while `map` still holds a live Leaflet instance bound to that element left
+    // the two permanently out of step: the next render found #map present, so it
+    // neither rebuilt the element nor re-initialised Leaflet, and every filter
+    // chosen afterwards drew into a container Leaflet no longer had. That is why
+    // one empty category broke the map until you switched views — and it was
+    // reachable by clicking "Invasive", which was always empty because of the
+    // filter bug above.
+    if (map) { map.remove(); map = markers = null; }
+    if (mapRO) { mapRO.disconnect(); mapRO = null; }
     $("map").innerHTML = `<p class="empty">No located records match that.</p>`;
     return;
   }
@@ -766,7 +830,7 @@ function fitMap() {
   if (!map || !mapped.length) return;
   const size = map.getSize();
   if (!size.x || !size.y) return;   // not laid out yet — watchMapSize will retry
-  map.fitBounds(L.latLngBounds(mapped.map(llOf)).pad(0.25), { maxZoom: 17 });
+  map.fitBounds(L.latLngBounds(mapped.map(u => llOf(u.anchor))).pad(0.25), { maxZoom: 17 });
   fitted = true;
 }
 
@@ -799,23 +863,26 @@ function drawMarkers() {
   // is collapsed before the pixel test — otherwise seven photographs two metres
   // apart split back into seven pins as soon as you zoom in far enough.
   const groups = [];
-  byOccurrence(mapped).forEach(u => {
+  mapped.forEach(u => {
     const p = map.project(llOf(u.anchor), z);
     const g = groups.find(g => g.p.distanceTo(p) < MERGE_PX);
-    if (g) g.items.push(...u.items); else groups.push({ p, items: [...u.items] });
+    // `finds` is what the badge counts; `items` stays the photographs behind them,
+    // which is what the popup drills into.
+    if (g) { g.items.push(...u.items); g.finds += 1; }
+    else groups.push({ p, items: [...u.items], finds: 1 });
   });
 
   groups.forEach(g => {
-    const o = g.items[0], s = SP[o.species_id] || SP.unknown;
+    const o = g.items[0], s = SP[shownAs(o, SHOWN_FOR)] || SP.unknown;
     // A mixed pin takes the colour of its most urgent member — a regulated find
     // must not be hidden behind a native one it happens to sit next to.
-    const worst = g.items.map(x => statusOf(SP[x.species_id] || SP.unknown))
+    const worst = g.items.map(x => statusOf(SP[shownAs(x, SHOWN_FOR)] || SP.unknown))
       .sort((a, b) => ORDER.indexOf(a) - ORDER.indexOf(b))[0];
     const icon = L.divIcon({
       className: "", iconSize: [44, 44], iconAnchor: [22, 22], popupAnchor: [0, -20],
       html: `<div class="mk-wrap"><div class="mk s-${worst}${g.items.some(x => !x.is_verified) ? " unver" : ""}">`
           + `<img src="${esc(thumbSrc(o))}" alt="${esc(s.common)}" loading="lazy">`
-          + `</div>${g.items.length > 1 ? `<span class="cnt">${g.items.length}</span>` : ""}</div>`,
+          + `</div>${g.finds > 1 ? `<span class="cnt">${g.finds}</span>` : ""}</div>`,
     });
     const gid = String(PIN.push(g.items) - 1);   // popups look their group up by index
     const mk = L.marker(llOf(o), { icon, title: s.common, alt: s.common, keyboard: true })
@@ -838,7 +905,7 @@ function popupHTML(gid) {
   // A pin can hold several finds, and each find several photographs. The list is
   // of FINDS — otherwise a patch photographed seven times reads as seven records
   // sitting on top of each other, which is what the pin grouping just stopped.
-  const units = byOccurrence(items);
+  const units = byOccurrence(items, SHOWN_FOR);
   if (units.length > 1) return listHTML(gid, units);
   return detailHTML(gid, items.indexOf(units[0].anchor), units[0].items.length);
 }
@@ -848,7 +915,7 @@ function popupHTML(gid) {
 function listHTML(gid, units) {
   const all = PIN[gid] || [];
   const rows = units.map(u => {
-    const o = u.anchor, s = SP[o.species_id] || SP.unknown, n = u.items.length;
+    const o = u.anchor, s = SP[u.species_id || spOf(o)] || SP.unknown, n = u.items.length;
     return `<button class="pop-row" onclick="event.stopPropagation();pinShow('${gid}',${all.indexOf(o)},${n})">
       <img src="${esc(thumbSrc(o))}" alt="">
       <span class="rt">
@@ -870,8 +937,8 @@ function detailHTML(gid, idx, n = 1) {
   const items = PIN[gid] || [];
   const o = items[idx];
   if (!o) return `<div class="pop"><div class="pb">Not found.</div></div>`;
-  const s = SP[o.species_id] || SP.unknown;
-  const finds = byOccurrence(items).length;
+  const s = SP[shownAs(o, SHOWN_FOR)] || SP.unknown;
+  const finds = byOccurrence(items, SHOWN_FOR).length;
   const back = finds > 1
     ? `<button class="pop-back" onclick="event.stopPropagation();pinList('${gid}')">&larr; All ${finds} finds here</button>` : "";
   return `<div class="pop">
