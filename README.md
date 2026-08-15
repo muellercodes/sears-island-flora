@@ -1015,12 +1015,50 @@ and for FOSI's existing audience — it is not a route to a state record.
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests -t .
+python3 -m unittest discover -s tests -t .   # the survey's rules
+node --test tests/*.test.mjs                 # the site's rules
+python3 tests/mutation_check.py              # do those two still have teeth?
 ```
 
-Stdlib only, no network, under a second. Runs on every push and pull request, and
-again in the deploy workflow — the pipeline commits straight to `main` every night,
-so a broken rule must not be able to reach the site by skipping a PR.
+No dependencies, no network, no browser download; each is well under a second.
+All three run on every push and pull request, and the first two again in the
+deploy workflow — the pipeline commits straight to `main` every night, so a broken
+rule must not be able to reach the site by skipping a PR.
+
+### Why there are three
+
+The Python suite was 149 tests and green while four user-visible bugs shipped in a
+single session: a filter that hid the survey's only invasive, a photograph
+credited to one species when it evidenced two, counts that disagreed with the map
+beside them, and a button that opened the wrong plant. None were reachable from
+Python, because they lived in an inline `<script>` wrapped around a live DOM.
+
+So the page's rules moved into `app/survey.js` — no DOM, no globals, everything
+passed in — which the page loads and `tests/app.test.mjs` exercises directly.
+Both use that one file, so they cannot drift.
+
+The third suite is the one that matters most. **A green suite proves nothing until
+you have watched it fail**, so `mutation_check.py` reintroduces each of those bugs
+in turn and requires the suite to go red:
+
+```
+  ok   a background-only species is invisible to its own filter
+  ok   one frame showing two species counts as one find
+  ok   a chip counts species rather than locations
+  ok   'Full details' opens the photograph's subject, not the find
+  ok   an empty filter paints over the map instead of tearing it down
+  ok   waiting for a paint hangs forever in a backgrounded tab
+  ok   a backtick in an HTML comment silently breaks the whole page
+```
+
+That last one is why the site suite parses the page at all: a stray backtick
+inside a template literal terminated the string and broke every script on the
+page — no filters, no map, no contributor mode — while the file stayed valid HTML
+and all 149 Python tests went on passing.
+
+**What none of them cover is layout.** A CSS collision that lays a checklist out
+in columns, or a popup falling off the bottom of a phone, still needs a browser
+and a person looking at it.
 
 What they cover is deliberately narrow: **the judgment calls, not the plumbing.**
 Each rule below encodes a decision that reads as arbitrary to whoever edits it next,
@@ -1033,6 +1071,8 @@ and would break silently.
 | `test_reconcile` | Merge, drop and orphan logic — and the three things it must never touch: a seed entry, the target of a field check, the `unknown` sentinel |
 | `test_steward_sheet` | What counts as a verification, and refusing a sheet whose columns moved |
 | `test_data_integrity` | Reads the committed data: the reference list and catalogue agree, nothing published is missing a location or date, no verification field is incomplete |
+| `test_site_assets` | That the published page is complete — a script the page loads but `publish` never copies 404s in the browser and takes the whole app with it, failing nothing else |
+| `app.test.mjs` | The rules the page runs on: which species a photograph counts towards, what the numbers mean, and whether the page parses |
 | `test_contributor_inbox` | Who may write what — including that the unattended token cannot manufacture a field check, and that `worker/index.js` has not drifted from the table here. What a surplus mark may destroy: never the only record of another species in the frame |
 
 Writing these found a real hole: the hedge-word check ran *after* parentheticals

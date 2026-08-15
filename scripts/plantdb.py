@@ -1297,6 +1297,19 @@ def cmd_publish(args):
         shutil.rmtree(pub)
     (pub / "app").mkdir(parents=True)
     shutil.copy2(ROOT / "index.html", pub / "index.html")
+    # Every script index.html loads, except the data file written below. Copied by
+    # scanning the page rather than by a hard-coded list, because a file added to
+    # the page and forgotten here does not fail loudly — it 404s in the browser
+    # and takes the whole app with it, on a site nothing else tests.
+    for src in re.findall(r'<script src="app/([A-Za-z0-9_.-]+)"',
+                          (ROOT / "index.html").read_text()):
+        if src == "data.js":
+            continue
+        asset = ROOT / "app" / src
+        if not asset.exists():
+            sys.exit(f"index.html loads app/{src}, which does not exist. "
+                     "The published site would break.")
+        shutil.copy2(asset, pub / "app" / src)
 
     # Built from the source files, NOT from app/data.js — that file deliberately
     # merges in local-only records, and reading it back would republish them.

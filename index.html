@@ -471,6 +471,9 @@
 <dialog id="lightbox"><img id="lightbox-img" alt=""></dialog>
 
 <script src="app/data.js"></script>
+<!-- The survey's presentation rules, shared with tests/app.test.mjs so the
+     page and the tests cannot drift. See app/survey.js. -->
+<script src="app/survey.js"></script>
 <script>
 const DB = window.PLANT_DB || {species:[], observations:[]};
 const SP = Object.fromEntries(DB.species.map(s => [s.id, s]));
@@ -487,46 +490,18 @@ const OCC = {};
 // Which occurrence a photograph belongs to, for a given species. Keyed by both,
 // because one photograph can evidence several species — its subject plus anything
 // identified behind it — and belongs to a different patch of each.
-const OCC_OF = {};
-(DB.occurrences || []).forEach(x =>
-  x.files.forEach(f => (OCC_OF[`${x.species_id}|${f}`] = x)));
+const OCC_OF = Survey.indexOccurrences(DB.occurrences);
 const occOf = o => OCC_OF[`${spOf(o)}|${o.file}`] || null;
 
-// Collapse photographs into the things they are photographs OF. Seven shots of one
-// willowherb patch are one find, and showing them as seven is exactly the
-// conflation the occurrence model exists to end.
-// Which species a photograph is being SHOWN FOR. Usually its subject, but when a
-// filter is active it is whichever matching species this frame evidences — a photo
-// of rubus that also caught smooth-bedstraw is, under an "invasive" filter, a
-// record of the bedstraw, and grouping or labelling it as rubus would hide the
-// only record of the invasive there is.
-function shownAs(o, ok) {
-  if (!ok) return spOf(o);
-  return [spOf(o), ...(o.also || [])].find(s => ok.has(s)) || spOf(o);
-}
-
-function byOccurrence(records, ok) {
-  const seen = new Map();
-  records.forEach(o => {
-    // EVERY matching species this photograph evidences, not just the first. One
-    // frame can be a record of several plants at once — a fifth of these carry a
-    // second species in the background — and each is its own find at that spot.
-    // Taking only the first lost one whenever a single photograph caught two
-    // species of the same status: plantain and dandelion share a frame here, and
-    // the map showed 9 introduced locations where the data has 10.
-    const sids = [...new Set([spOf(o), ...(o.also || [])])].filter(s => !ok || ok.has(s));
-    (sids.length ? sids : [spOf(o)]).forEach(sid => {
-      const x = OCC_OF[`${sid}|${o.file}`] || null;
-      const k = x ? `${sid}@${x.lat},${x.lon}` : `solo|${sid}|${o.file}`;
-      if (seen.has(k)) seen.get(k).items.push(o);
-      else seen.set(k, { anchor: o, items: [o], occ: x, species_id: sid });
-    });
-  });
-  return [...seen.values()];
-}
+// All four of these are app/survey.js, not copies of it. They are the rules that
+// decide which species a photograph counts towards and how photographs collapse
+// into finds — every user-visible bug this project has shipped has been in one of
+// them — so they live in one tested file and the page borrows them.
+const shownAs = (o, ok) => Survey.shownAs(o, ok);
+const byOccurrence = (records, ok) => Survey.byOccurrence(records, ok, OCC_OF);
 const byS = {};       // photos where this species is the main subject
 const alsoS = {};     // photos where it's visible but not the subject — still a real record of it growing there
-const spOf = o => o.effective_species_id || o.species_id;   // human verdict wins
+const spOf = o => Survey.spOf(o);          // human verdict wins — app/survey.js
 OBS.forEach(o => {
   (byS[spOf(o)] ||= []).push(o);
   (o.also || []).forEach(id => (alsoS[id] ||= []).push(o));
@@ -613,13 +588,8 @@ function dateSpan(list) {
 // correct both numbers are. A filter's number should predict what you are about
 // to see, and what you see is places. The species count is on the line below,
 // where it can sit next to the location count and explain the difference.
-const LOCATIONS = {};
-(DB.occurrences || []).forEach(x => {
-  const sp = SP[x.species_id];
-  if (!sp || x.species_id === "unknown") return;
-  const k = statusOf(sp);
-  LOCATIONS[k] = (LOCATIONS[k] || 0) + 1;
-});
+const LOCATIONS = Survey.locationCounts(
+  DB.occurrences, id => (SP[id] ? statusOf(SP[id]) : null));
 $("filters").innerHTML = ORDER.map(k => {
   const n = LOCATIONS[k] || 0;
   const sp = SPECIES.filter(s => statusOf(s) === k).length;
@@ -678,7 +648,7 @@ function render() {
   //
   // `spOf`, not `species_id`, so a human correction decides which species a
   // photograph counts towards.
-  const evidences = o => ok.has(spOf(o)) || (o.also || []).some(a => ok.has(a));
+  const evidences = o => Survey.evidences(o, ok);
 
   if (mode === "species") {
     $("count").textContent = `${list.length} species · ${
@@ -710,10 +680,9 @@ function render() {
   // said as "20 species / 32 finds". The jargon stays in the code and the data;
   // the page does not need it.
   const tally = (us) => {
-    const photos = us.reduce((n, u) => n + u.items.length, 0);
-    const species = new Set(us.map(u => u.species_id)).size;
-    return `${species} species · ${us.length} location${us.length === 1 ? "" : "s"}`
-      + ` · ${photos} photograph${photos === 1 ? "" : "s"}`;
+    const t = Survey.tally(us);
+    return `${t.species} species · ${t.locations} location${t.locations === 1 ? "" : "s"}`
+      + ` · ${t.photographs} photograph${t.photographs === 1 ? "" : "s"}`;
   };
 
   if (mode === "map") {
