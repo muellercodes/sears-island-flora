@@ -1,13 +1,18 @@
 name: Tests
 
-# The rules these cover are judgment calls that read as arbitrary to whoever edits
-# them next — including the person who wrote them, a month later. The one that most
-# needs holding is the identification guard: it has to block descriptions without
-# swallowing "Japanese Knotweed (possible young shoot)", and widening it slightly
-# would lose a regulated-invasive lead silently.
+# Three suites, covering three different kinds of mistake.
 #
-# Stdlib only, no network, no data files touched — every function under test is
-# pure, so this is safe to run anywhere and takes well under a second.
+#   unittest   the survey's judgment calls — what counts as a verification, what a
+#              surplus mark may destroy, who may write what
+#   site       the rules the PAGE runs on: which species a photograph counts
+#              towards, what the numbers mean, whether the page parses at all
+#   mutation   proof the other two would actually notice. Every bug this project
+#              has shipped is reintroduced and the suite has to go red.
+#
+# The site suite exists because the Python one was 149 tests and green while four
+# user-visible bugs shipped in a single session — they lived in the browser, where
+# nothing was looking. Stdlib and Node built-ins only: no dependencies, no network,
+# no browser download, well under a second each.
 
 on:
   push:
@@ -26,5 +31,24 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Run the suite
+      - name: The survey's rules
         run: python3 -m unittest discover -s tests -t . -v
+
+  site:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      # node --test is built in. No package.json, no install, nothing to audit.
+      - name: The site's rules
+        run: node --test tests/*.test.mjs
+
+      # Runs last because it edits tracked files and restores them. If it ever
+      # fails, the suite above has stopped noticing something it used to catch.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Do the tests still have teeth?
+        run: python3 tests/mutation_check.py

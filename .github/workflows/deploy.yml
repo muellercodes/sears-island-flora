@@ -27,6 +27,14 @@ jobs:
       # without a PR — the pipeline commits straight to main every night.
       - name: Tests
         run: python3 -m unittest discover -s tests -t .
+      # The page's own rules, and whether it parses. A broken inline script is
+      # still valid HTML and still passes every Python test, so without this the
+      # deploy would happily ship a page with no filters and no map.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Site tests
+        run: node --test tests/*.test.mjs
       - name: Privacy check (fails the build if EXIF or precise GPS is present)
         run: python3 scripts/plantdb.py verify
       - name: Build public/

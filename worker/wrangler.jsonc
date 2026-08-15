@@ -1,0 +1,51 @@
+{
+  // Contributor endpoint for the Sears Island flora survey. See worker/index.js
+  // for what this is and — more importantly — what it deliberately is not.
+  //
+  // Deploy:
+  //   npx wrangler d1 create sears-island-contributors     # paste the id below
+  //   npx wrangler r2 bucket create sears-island-inbox
+  //   npx wrangler d1 execute sears-island-contributors --remote --file schema.sql
+  //   npx wrangler deploy
+  //
+  // There are NO secrets in this file and none are needed. Contributor tokens
+  // live in D1 as hashes, and the Worker reaches R2 and D1 through bindings
+  // rather than credentials — so, like deploy.yml, this is a deployable artefact
+  // that holds nothing worth stealing.
+  "name": "sears-island-contributors",
+  "main": "index.js",
+  "compatibility_date": "2026-08-14",
+  "compatibility_flags": ["nodejs_compat"],
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "sears-island-contributors",
+      "database_id": "PASTE_THE_ID_FROM_d1_create_HERE"
+    }
+  ],
+
+  // NOT the public bucket the site serves thumbnails from. These are
+  // full-resolution originals that still carry their EXIF, and the survey strips
+  // EXIF from everything it publishes precisely so contributor camera serials do
+  // not go out. This bucket must never have public access enabled.
+  "r2_buckets": [
+    {
+      "binding": "INBOX",
+      "bucket_name": "sears-island-inbox"
+    }
+  ],
+
+  "vars": {
+    // Which origins may call this. An allowlist rather than "*", because these
+    // endpoints write to a survey and the browser is the only thing between a
+    // token in someone's localStorage and any page that can reach this origin.
+    // Add http://localhost:8777 while developing against `plantdb.py serve`.
+    "ALLOWED_ORIGINS": "https://muellercodes.github.io,http://127.0.0.1:8777,http://localhost:8777"
+  },
+
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  }
+}

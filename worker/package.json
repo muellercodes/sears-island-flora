@@ -1,0 +1,14 @@
+{
+  "name": "sears-island-contributors",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "schema": "wrangler d1 execute sears-island-contributors --remote --file schema.sql",
+    "schema:local": "wrangler d1 execute sears-island-contributors --local --file schema.sql"
+  },
+  "devDependencies": {
+    "wrangler": "^4"
+  }
+}

@@ -54,10 +54,25 @@ def _quote(s):
     return "".join(c if c in safe else "".join(f"%{b:02X}" for b in c.encode()) for c in s)
 
 
-def signed_request(cfg, method, key, body=b"", content_type=None, payload_hash=None):
-    """Build a signed urllib Request for <bucket>/<key>."""
+def _strict_quote(s):
+    """Same, but '/' is encoded too — query values must not keep it unescaped."""
+    safe = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.~"
+    return "".join(c if c in safe else "".join(f"%{b:02X}" for b in c.encode()) for c in s)
+
+
+def signed_request(cfg, method, key, body=b"", content_type=None, payload_hash=None,
+                   query=None):
+    """Build a signed urllib Request for <bucket>/<key>.
+
+    `query` is a dict for the operations that take one — ListObjectsV2 is a GET on
+    the bucket with `list-type=2`. SigV4 signs the query string too, and requires
+    it sorted by key and percent-encoded, so it is built here rather than by the
+    caller appending to a URL.
+    """
     host = f"{cfg['R2_ACCOUNT_ID']}.r2.cloudflarestorage.com"
-    path = _quote(f"/{cfg['R2_BUCKET']}/{key}")
+    path = _quote(f"/{cfg['R2_BUCKET']}/{key}" if key else f"/{cfg['R2_BUCKET']}")
+    canon_query = "&".join(
+        f"{_strict_quote(k)}={_strict_quote(str(v))}" for k, v in sorted((query or {}).items()))
     now = datetime.datetime.now(datetime.timezone.utc)
     amzdate = now.strftime("%Y%m%dT%H%M%SZ")
     datestamp = now.strftime("%Y%m%d")
@@ -68,7 +83,7 @@ def signed_request(cfg, method, key, body=b"", content_type=None, payload_hash=N
         headers["content-type"] = content_type
     signed_headers = ";".join(sorted(headers))
     canon_headers = "".join(f"{k}:{headers[k]}\n" for k in sorted(headers))
-    canon = f"{method}\n{path}\n\n{canon_headers}\n{signed_headers}\n{ph}"
+    canon = f"{method}\n{path}\n{canon_query}\n{canon_headers}\n{signed_headers}\n{ph}"
 
     scope = f"{datestamp}/{REGION}/{SERVICE}/aws4_request"
     to_sign = ("AWS4-HMAC-SHA256\n" + amzdate + "\n" + scope + "\n"
@@ -79,7 +94,8 @@ def signed_request(cfg, method, key, body=b"", content_type=None, payload_hash=N
     headers["Authorization"] = (
         f"AWS4-HMAC-SHA256 Credential={cfg['R2_ACCESS_KEY_ID']}/{scope}, "
         f"SignedHeaders={signed_headers}, Signature={sig}")
-    req = urllib.request.Request(f"https://{host}{path}", data=body or None, method=method)
+    url = f"https://{host}{path}" + (f"?{canon_query}" if canon_query else "")
+    req = urllib.request.Request(url, data=body or None, method=method)
     for k, v in headers.items():
         req.add_header(k, v)
     return req
@@ -107,6 +123,50 @@ def put(cfg, key, data, content_type="image/jpeg", retries=3):
             import time
             time.sleep(2 ** attempt)
     raise R2Error(f"{key}: giving up after {retries} attempts — {last}")
+
+
+def get(cfg, key):
+    """Fetch one object's bytes, or None if it is not there.
+
+    Absence is not an error: the inbox drain races nothing but itself, and an
+    object collected by a run that then failed to delete it is a normal state to
+    recover from rather than a reason to stop.
+    """
+    req = signed_request(cfg, "GET", key)
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r:
+            return r.read()
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return None
+        raise R2Error(f"{key}: HTTP {e.code} — {e.read()[:200].decode('utf-8', 'replace')}")
+
+
+def list_keys(cfg, prefix="", limit=1000):
+    """Every object key under `prefix`, following continuation tokens.
+
+    Parsed with the stdlib XML reader rather than a regex over the body: a key can
+    contain characters that close a tag when they are not escaped, and this list
+    decides what gets applied to the survey.
+    """
+    import xml.etree.ElementTree as ET
+    ns = "{http://s3.amazonaws.com/doc/2006-03-01/}"
+    keys, token = [], None
+    while True:
+        q = {"list-type": "2", "prefix": prefix, "max-keys": str(min(limit, 1000))}
+        if token:
+            q["continuation-token"] = token
+        req = signed_request(cfg, "GET", "", query=q)
+        try:
+            with urllib.request.urlopen(req, timeout=60) as r:
+                root = ET.fromstring(r.read())
+        except urllib.error.HTTPError as e:
+            raise R2Error(f"list {prefix}: HTTP {e.code} — "
+                          f"{e.read()[:200].decode('utf-8', 'replace')}")
+        keys += [c.findtext(f"{ns}Key") for c in root.findall(f"{ns}Contents")]
+        token = root.findtext(f"{ns}NextContinuationToken")
+        if not token or len(keys) >= limit:
+            return keys[:limit]
 
 
 def delete(cfg, key):
