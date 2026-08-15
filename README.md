@@ -713,6 +713,26 @@ species observed at one location on one date, so `export-imap` writes one row pe
 occurrence. Submitted per photograph, seven shots of one willowherb patch would
 report seven infestations to Maine.
 
+### One entry per patch, everywhere
+
+`one_per_patch` is the single rule, and every surface that enumerates records uses
+it: the map, the photo grid, the map popup, the species sheet, the steward sheet,
+`unverified`, `invasives` and `export-imap`.
+
+A patch photographed seven times is one thing growing in one place. Seven rows in a
+steward's sheet is seven walks to verify one shrub; seven lines in a survey report
+overstates what is on the ground; seven records to the state reports seven
+infestations.
+
+**Every photograph is kept** — they are the evidence, and they all appear on the
+species page. Only one of them represents the find in a list, with the others
+counted beside it ("7 photographs of this patch"). Grouping is a presentation rule,
+never a deletion.
+
+Records with no coordinates each stand alone. Without a location there is no way to
+know whether two photographs are the same plant, and merging on a guess would
+invent a finding.
+
 ## Going back to check: `fieldwork`
 
 ```bash
