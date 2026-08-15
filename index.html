@@ -244,7 +244,21 @@
   .leaflet-popup .leaflet-popup-content-wrapper,
   .leaflet-popup .leaflet-popup-tip { background:var(--panel); color:var(--ink); box-shadow:var(--shadow); }
   .leaflet-popup .leaflet-popup-content-wrapper { border:1px solid var(--line); overflow:hidden; }
-  .leaflet-popup .leaflet-popup-content { margin:0; width:190px !important; }
+  /* Wide enough for a sentence to breathe, capped so it never outgrows a phone.
+     The height cap matters more: a long identification note used to push the
+     species name and the Full details button off the bottom with nothing to scroll. */
+  .leaflet-popup .leaflet-popup-content { margin:0; width:min(310px, 78vw) !important; }
+  .pop { max-height:min(68vh, 440px); overflow-y:auto; overscroll-behavior:contain; }
+  .pop::-webkit-scrollbar { width:8px; }
+  .pop::-webkit-scrollbar-thumb { background:var(--line); border-radius:4px; }
+  /* The note is context, not the point of a popup — clamp it so the identification
+     and the button stay reachable however much the model wrote. */
+  .pop .pnote { display:-webkit-box; -webkit-line-clamp:4; -webkit-box-orient:vertical;
+    overflow:hidden; }
+  /* The way out of the popup stays put. However long the note runs, the button
+     that opens the full record is on screen without scrolling for it. */
+  .pop .pb > button { position:sticky; bottom:0; width:100%; margin-top:10px; }
+  .pop img { flex:none; }
   .leaflet-bar.leaflet-control a { background:var(--panel); color:var(--ink); border-bottom-color:var(--line); }
   .leaflet-bar.leaflet-control a:hover { background:var(--bg); color:var(--ink); }
   .leaflet-control-attribution { background:rgba(255,255,255,.8) !important; font-size:10px; }
@@ -717,7 +731,8 @@ function drawMarkers() {
     const gid = String(PIN.push(g.items) - 1);   // popups look their group up by index
     const mk = L.marker(llOf(o), { icon, title: s.common, alt: s.common, keyboard: true })
       .addTo(markers)
-      .bindPopup(popupHTML(gid), { closeButton: false, autoPanPadding: [24, 24], maxWidth: 260 });
+      .bindPopup(popupHTML(gid), { closeButton: false, autoPanPadding: [24, 24],
+                                   maxWidth: 320, maxHeight: 440 });
     mk.getPopup().pinGid = gid;
   });
 }
@@ -784,8 +799,8 @@ function detailHTML(gid, idx, n = 1) {
         to see them all</div>` : ""}
       ${o.identified ? `<div class="pm">Identified ${esc(o.identified)}</div>` : ""}
       ${(o.verified || {}).notes
-          ? `<div class="pm"><b>In the field:</b> ${esc(o.verified.notes)}</div>`
-          : (o.note ? `<div class="pm">${esc(o.note)}</div>` : "")}
+          ? `<div class="pm pnote"><b>In the field:</b> ${esc(o.verified.notes)}</div>`
+          : (o.note ? `<div class="pm pnote">${esc(o.note)}</div>` : "")}
       <button data-id="${esc(o.species_id)}" onclick="openSheet(this.dataset.id)">Full details</button>
     </div></div>`;
 }
