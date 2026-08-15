@@ -139,6 +139,7 @@
     font-size:13.5px; color:var(--muted); }
   .help .how b { color:var(--ink); }
   .pcount { font-size:12px; color:var(--muted); }
+  .rn-n { font-weight:600; font-size:11px; color:var(--muted); }
   .patch { margin:14px 0 8px; font-size:12.5px; color:var(--muted);
     padding-left:10px; border-left:2px solid var(--line); }
   /* One card is one find. The badge says how many photographs stand behind it. */
@@ -243,7 +244,21 @@
   .leaflet-popup .leaflet-popup-content-wrapper,
   .leaflet-popup .leaflet-popup-tip { background:var(--panel); color:var(--ink); box-shadow:var(--shadow); }
   .leaflet-popup .leaflet-popup-content-wrapper { border:1px solid var(--line); overflow:hidden; }
-  .leaflet-popup .leaflet-popup-content { margin:0; width:190px !important; }
+  /* Wide enough for a sentence to breathe, capped so it never outgrows a phone.
+     The height cap matters more: a long identification note used to push the
+     species name and the Full details button off the bottom with nothing to scroll. */
+  .leaflet-popup .leaflet-popup-content { margin:0; width:min(310px, 78vw) !important; }
+  .pop { max-height:min(68vh, 440px); overflow-y:auto; overscroll-behavior:contain; }
+  .pop::-webkit-scrollbar { width:8px; }
+  .pop::-webkit-scrollbar-thumb { background:var(--line); border-radius:4px; }
+  /* The note is context, not the point of a popup — clamp it so the identification
+     and the button stay reachable however much the model wrote. */
+  .pop .pnote { display:-webkit-box; -webkit-line-clamp:4; -webkit-box-orient:vertical;
+    overflow:hidden; }
+  /* The way out of the popup stays put. However long the note runs, the button
+     that opens the full record is on screen without scrolling for it. */
+  .pop .pb > button { position:sticky; bottom:0; width:100%; margin-top:10px; }
+  .pop img { flex:none; }
   .leaflet-bar.leaflet-control a { background:var(--panel); color:var(--ink); border-bottom-color:var(--line); }
   .leaflet-bar.leaflet-control a:hover { background:var(--bg); color:var(--ink); }
   .leaflet-control-attribution { background:rgba(255,255,255,.8) !important; font-size:10px; }
@@ -716,7 +731,8 @@ function drawMarkers() {
     const gid = String(PIN.push(g.items) - 1);   // popups look their group up by index
     const mk = L.marker(llOf(o), { icon, title: s.common, alt: s.common, keyboard: true })
       .addTo(markers)
-      .bindPopup(popupHTML(gid), { closeButton: false, autoPanPadding: [24, 24], maxWidth: 260 });
+      .bindPopup(popupHTML(gid), { closeButton: false, autoPanPadding: [24, 24],
+                                   maxWidth: 320, maxHeight: 440 });
     mk.getPopup().pinGid = gid;
   });
 }
@@ -730,36 +746,45 @@ let openPopup = null;
 
 function popupHTML(gid) {
   const items = PIN[gid] || [];
-  return items.length > 1 ? listHTML(gid, items) : detailHTML(gid, 0);
+  // A pin can hold several finds, and each find several photographs. The list is
+  // of FINDS — otherwise a patch photographed seven times reads as seven records
+  // sitting on top of each other, which is what the pin grouping just stopped.
+  const units = byOccurrence(items);
+  if (units.length > 1) return listHTML(gid, units);
+  return detailHTML(gid, items.indexOf(units[0].anchor), units[0].items.length);
 }
 
 // Inline handlers stop propagation: a click reaching the map triggers Leaflet's
 // closeOnClick, which would dismiss the popup instead of drilling into the record.
-function listHTML(gid, items) {
-  const rows = items.map((o, i) => {
-    const s = SP[o.species_id] || SP.unknown;
-    return `<button class="pop-row" onclick="event.stopPropagation();pinShow('${gid}',${i})">
+function listHTML(gid, units) {
+  const all = PIN[gid] || [];
+  const rows = units.map(u => {
+    const o = u.anchor, s = SP[o.species_id] || SP.unknown, n = u.items.length;
+    return `<button class="pop-row" onclick="event.stopPropagation();pinShow('${gid}',${all.indexOf(o)},${n})">
       <img src="${esc(thumbSrc(o))}" alt="">
       <span class="rt">
-        <span class="rn">${esc(s.common)}</span>
+        <span class="rn">${esc(s.common)}${n > 1 ? ` <span class="rn-n">${n} photos</span>` : ""}</span>
         <span class="rm"><span class="dot d-${statusOf(s)}"></span>${esc(badgeOf(s).label)}
           · <span class="conf-${o.confidence}">${esc(o.confidence)}</span></span>
         <span class="rm">${esc(day(o))}${o.identified ? ` · ID'd ${esc(o.identified)}` : ""}</span>
         <span class="rm">${vBadge(o)}</span>
       </span></button>`;
   }).join("");
+  const finds = units.length, photos = units.reduce((t, u) => t + u.items.length, 0);
   return `<div class="pop">
-    <div class="pop-hd">${items.length} records at this spot</div>
+    <div class="pop-hd">${finds} find${finds === 1 ? "" : "s"} at this spot${
+      photos > finds ? ` · ${photos} photographs` : ""}</div>
     <div class="pop-list">${rows}</div></div>`;
 }
 
-function detailHTML(gid, idx) {
+function detailHTML(gid, idx, n = 1) {
   const items = PIN[gid] || [];
   const o = items[idx];
   if (!o) return `<div class="pop"><div class="pb">Not found.</div></div>`;
   const s = SP[o.species_id] || SP.unknown;
-  const back = items.length > 1
-    ? `<button class="pop-back" onclick="event.stopPropagation();pinList('${gid}')">&larr; All ${items.length} here</button>` : "";
+  const finds = byOccurrence(items).length;
+  const back = finds > 1
+    ? `<button class="pop-back" onclick="event.stopPropagation();pinList('${gid}')">&larr; All ${finds} finds here</button>` : "";
   return `<div class="pop">
     ${back}
     <img src="${esc(thumbSrc(o))}" alt="${esc(s.common)}">
@@ -770,10 +795,12 @@ function detailHTML(gid, idx) {
         · <span class="conf-${o.confidence}">${esc(o.confidence)}</span></div>
       <div class="pm">${vBadge(o)}</div>
       <div class="pm">${esc(day(o))} · ${esc(o.lat)}, ${esc(o.lon)}</div>
+      ${n > 1 ? `<div class="pm">${n} photographs of this patch — open Full details
+        to see them all</div>` : ""}
       ${o.identified ? `<div class="pm">Identified ${esc(o.identified)}</div>` : ""}
       ${(o.verified || {}).notes
-          ? `<div class="pm"><b>In the field:</b> ${esc(o.verified.notes)}</div>`
-          : (o.note ? `<div class="pm">${esc(o.note)}</div>` : "")}
+          ? `<div class="pm pnote"><b>In the field:</b> ${esc(o.verified.notes)}</div>`
+          : (o.note ? `<div class="pm pnote">${esc(o.note)}</div>` : "")}
       <button data-id="${esc(o.species_id)}" onclick="openSheet(this.dataset.id)">Full details</button>
     </div></div>`;
 }
@@ -784,8 +811,8 @@ function setPopup(html) {
   openPopup.setContent(html);
   openPopup.update();
 }
-function pinShow(gid, idx) { setPopup(detailHTML(gid, idx)); }
-function pinList(gid) { setPopup(listHTML(gid, PIN[gid] || [])); }
+function pinShow(gid, idx, n = 1) { setPopup(detailHTML(gid, idx, n)); }
+function pinList(gid) { setPopup(listHTML(gid, byOccurrence(PIN[gid] || []))); }
 
 // ---- detail sheet --------------------------------------------------------
 // Photo tiles. `secondary` = this species is visible in the shot but isn't its subject,
