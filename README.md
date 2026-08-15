@@ -55,9 +55,15 @@ stake in the answer.
   The identifier refuses to create them and `reconcile` removes any that got in; the
   photo stays unidentified, which is the true answer. See
   [Reconciling the catalogue](#reconciling-the-catalogue).
-- **Genus-only records are marked `unknown` status**, not guessed, when the genus holds
-  both native and introduced species. On the seed catalogue that's 10 of 41 — an honest
-  number, and each one is a "go back and look" task.
+- **Origin status is marked `unknown`, not guessed, whenever a photograph cannot settle
+  it.** Usually that is a genus-only identification where the genus holds both native
+  and introduced species. But it is not only genus-only records, and the exception
+  matters because it looks like a bug: *Prunella vulgaris* (Self-heal) is identified
+  cleanly to species and is still `unknown`, because the native North American
+  subspecies and the introduced European one both occur here and are not separable from
+  a photograph. The rank of the identification and the confidence of the origin call are
+  different questions. On the seed catalogue 10 of 41 are `unknown` — an honest number,
+  and each one is a "go back and look" task.
 
 ## Field verification
 
