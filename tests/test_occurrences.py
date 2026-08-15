@@ -145,3 +145,51 @@ class WhatReachesTheState(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class EverySurfaceListsFindsNotPhotographs(unittest.TestCase):
+    """The rule, stated once. A patch photographed seven times is one thing
+    growing in one place — seven rows in a steward's sheet is seven walks to
+    verify one shrub, and seven lines in a report overstates what is there.
+
+    Every photograph is kept. Only one of them represents the find anywhere that
+    enumerates records, which is what `one_per_patch` decides.
+    """
+
+    def setUp(self):
+        # A patch shot seven times, one separate plant of the same species, and
+        # something else entirely at the first spot.
+        self.recs = [at(f"burst{i}.jpg", "44.455464", f"-68.88150{i}") for i in range(7)]
+        self.recs.append(at("far.jpg", *FAR))
+        self.recs.append(at("other.jpg", *ANCHOR, sid="goldenrod"))
+
+    def test_a_burst_collapses_to_one_entry(self):
+        finds = plantdb.one_per_patch(self.recs)
+        self.assertEqual(len(finds), 3, "7-shot patch + distant plant + other species")
+        counts = sorted(n for _, n, _ in finds)
+        self.assertEqual(counts, [1, 1, 7])
+
+    def test_the_photographs_are_not_lost(self):
+        """Grouping is a presentation rule, never a deletion."""
+        finds = plantdb.one_per_patch(self.recs)
+        self.assertEqual(sum(n for _, n, _ in finds), len(self.recs))
+
+    def test_one_row_per_photograph_never_reappears(self):
+        for radius in (5, 10, 25):
+            with self.subTest(radius=radius):
+                finds = plantdb.one_per_patch(self.recs, radius=radius)
+                self.assertLess(len(finds), len(self.recs))
+
+    def test_a_photograph_counts_once_even_with_background_species(self):
+        """Listings are of records, so a shot showing three species is still one
+        row — under whatever it is a photograph OF."""
+        recs = [at("a.jpg", *ANCHOR, also=["goldenrod", "rubus"])]
+        self.assertEqual(len(plantdb.one_per_patch(recs)), 1)
+
+    def test_unlocated_records_each_stand_alone(self):
+        """Without coordinates there is no way to know whether two photographs are
+        the same plant, and merging on a guess would invent a finding."""
+        recs = [{**at(f"n{i}.jpg", *ANCHOR), "lat": "", "lon": ""} for i in range(3)]
+        finds = plantdb.one_per_patch(recs)
+        self.assertEqual(len(finds), 3)
+        self.assertTrue(all(n == 1 for _, n, _ in finds))

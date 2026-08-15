@@ -45,6 +45,9 @@ COLUMNS = [
     # person who needs to know — it lives in a CI log they will never open, and
     # they walk away believing their field check was recorded.
     ("recorded?",        "pipeline"),
+    # How many photographs stand behind this row. A steward seeing "7" knows the
+    # patch was shot repeatedly, not that six rows are missing.
+    ("photographs",      "pipeline"),
 ]
 HEADERS = [c[0] for c in COLUMNS]
 FIRST_HUMAN = next(i for i, (_, o) in enumerate(COLUMNS) if o == "human")
@@ -68,6 +71,9 @@ HEADER_NOTES = {
                     "verification, and the sync will refuse the row without it."),
     "verified date": "When you checked it (YYYY-MM-DD). Left blank, today's date is used.",
     "field notes": "What you actually saw. Free text.",
+    "photographs": ("Written by the pipeline — do not edit.\n\n"
+                    "How many photographs were taken of this patch. They are all on "
+                    "the website; this row represents the find, not one picture."),
     "recorded?": ("Written by the pipeline — do not edit.\n\n"
                   "✓ means your entry is in the survey.\n"
                   "⚠ means it was refused, and why. Fix the row and it syncs next run."),
@@ -207,7 +213,8 @@ def _has_protection(svc, cfg):
     return set()
 
 
-def push(svc, cfg, obs, species, image_base, verified_by_file, feedback=None):
+def push(svc, cfg, obs, species, image_base, verified_by_file, feedback=None,
+         photo_counts=None):
     """Write machine columns. Human columns are read first and written back untouched.
 
     `feedback` maps filename -> the "recorded?" note, computed by the caller (which
@@ -217,6 +224,7 @@ def push(svc, cfg, obs, species, image_base, verified_by_file, feedback=None):
     tab = sheet_id_of(svc, cfg)
     protected = _has_protection(svc, cfg)
     feedback = feedback or {}
+    photo_counts = photo_counts or {}
     rows = []
     for o in obs:
         machine = row_for(o, species, image_base)
@@ -225,6 +233,7 @@ def push(svc, cfg, obs, species, image_base, verified_by_file, feedback=None):
             v.get("status", ""), v.get("species_id", ""),
             v.get("by", ""), v.get("date", ""), v.get("notes", ""),
             feedback.get(o["file"], ""),
+            str(photo_counts.get(o["file"], 1)),
         ])
 
     last = _col(len(HEADERS) - 1)

@@ -260,7 +260,7 @@ def _located(o):
     return bool(o.get("lat") and o.get("lon"))
 
 
-def occurrences(obs, radius=OCCURRENCE_RADIUS_M):
+def occurrences(obs, radius=OCCURRENCE_RADIUS_M, subject_only=False):
     """Every (species, place) pair the survey has evidence for.
 
     A photograph counts towards a species if it is the subject OR if the species
@@ -276,7 +276,12 @@ def occurrences(obs, radius=OCCURRENCE_RADIUS_M):
     for o in obs:
         if not _located(o) or o.get("rejected"):
             continue
-        for sid in {effective_species(o), *(o.get("also") or [])}:
+        # `subject_only` for surfaces that list RECORDS rather than species: a
+        # photograph belongs to one row there, under whatever it is a photograph
+        # of, or it would appear once per species identified in it.
+        sids = ({effective_species(o)} if subject_only
+                else {effective_species(o), *(o.get("also") or [])})
+        for sid in sids:
             if sid != "unknown":
                 by_species.setdefault(sid, []).append(o)
 
@@ -298,6 +303,29 @@ def occurrences(obs, radius=OCCURRENCE_RADIUS_M):
             out.append(_occurrence(sid, g))
     out.sort(key=lambda x: (RANK.get(x["origin_status"], 9), x["species_id"]))
     return out
+
+
+def one_per_patch(obs, radius=OCCURRENCE_RADIUS_M):
+    """One record per (species, patch), plus how many photographs stand behind it.
+
+    The rule the whole survey is listed by. A patch photographed seven times is one
+    thing growing in one place: seven rows in a steward's sheet is seven walks to
+    verify one shrub, and seven lines in a report overstates what is on the ground.
+    Every photograph is kept — they are the evidence — but only one of them
+    represents the find anywhere that enumerates records.
+
+    Records with no location cannot be grouped, so each stands alone. That is right:
+    without coordinates there is no way to know whether two of them are the same
+    plant, and merging on a guess would invent a finding.
+    """
+    grouped, seen = [], set()
+    for x in occurrences(obs, radius, subject_only=True):
+        grouped.append((x["anchor"], len(x["members"]), x))
+        seen.update(o["file"] for o in x["members"])
+    for o in obs:
+        if o["file"] not in seen:
+            grouped.append((o, 1, None))
+    return grouped
 
 
 def occurrence_payload(obs):
@@ -711,6 +739,10 @@ def cmd_invasives(args):
         for sid in [effective_species(o)] + o.get("also", []):
             sightings.setdefault(sid, []).append(o)
 
+    # Group each species' photographs into the patches they were taken of, so the
+    # survey report counts finds on the ground rather than shutter presses.
+    sightings = {sid: one_per_patch(shots) for sid, shots in sightings.items()}
+
     rows = []
     for sid, shots in sightings.items():
         st = cls.get(sid, {}).get("status", "unknown")
@@ -734,20 +766,21 @@ def cmd_invasives(args):
         print(f"  {sp.get('common', sid)}  ({sp.get('scientific','?')})")
         if note:
             print(f"    {note}")
-        for o in shots:
+        for o, n, _ in shots:
             where = f"{o['lat']}, {o['lon']}" if o.get("lat") else "no location"
             sec = " [background]" if effective_species(o) != sid else ""
             v = o.get("verified") or {}
             mark = f"  ✓ {v['status']} by {v.get('by','?')} {v.get('date','')}" if is_verified(o) \
                    else "  · UNVERIFIED"
-            print(f"      {o.get('taken','')[:16]}  {where}  {o['file'][:8]}…{sec}{mark}")
+            more = f"  ({n} photographs)" if n > 1 else ""
+            print(f"      {o.get('taken','')[:16]}  {where}  {o['file'][:8]}…{sec}{more}{mark}")
         print()
 
     counts = {}
     for _, st, _, _, _ in rows:
         counts[st] = counts.get(st, 0) + 1
     print("Summary: " + ", ".join(f"{v} {k}" for k, v in sorted(counts.items(), key=lambda x: RANK.get(x[0], 9))))
-    nv = sum(1 for _, _, _, shots, _ in rows for o in shots if not is_verified(o))
+    nv = sum(1 for _, _, _, shots, _ in rows for o, _, _ in shots if not is_verified(o))
     if nv:
         print(f"\n{nv} of these sightings have NOT been checked by a person. "
               f"See: plantdb.py unverified")
@@ -1121,12 +1154,14 @@ def cmd_confirm(args):
 
 def cmd_unverified(args):
     """What still needs a person to go and look, most urgent first."""
+    # One line per find. A patch photographed seven times is one walk, not seven,
+    # and listing it seven times buries the other things that need checking.
     obs = [o for o in load_obs() if not is_verified(o)]
     species = {s["id"]: s for s in enriched_species()}
     rows = []
-    for o in obs:
+    for o, n, _ in one_per_patch(obs):
         sp = species.get(effective_species(o), {})
-        rows.append((RANK.get(sp.get("origin_status", "unknown"), 9), o, sp))
+        rows.append((RANK.get(sp.get("origin_status", "unknown"), 9), o, sp, n))
     rows.sort(key=lambda r: (r[0], r[1].get("taken", "")))
     if args.status:
         rows = [r for r in rows if r[2].get("origin_status") == args.status]
@@ -1135,14 +1170,15 @@ def cmd_unverified(args):
         return
     print(f"{len(rows)} record(s) awaiting field verification:\n")
     cur = None
-    for rank, o, sp in rows[: args.limit or len(rows)]:
+    for rank, o, sp, n in rows[: args.limit or len(rows)]:
         st = sp.get("origin_status", "unknown")
         if st != cur:
             cur = st
             print(f"\n=== {st.upper()} ===")
         print(f"  {o['file']}")
         print(f"    {sp.get('common', o.get('species_id'))}  [{o.get('confidence','?')}]"
-              f"  {o.get('lat','')}, {o.get('lon','')}")
+              f"  {o.get('lat','')}, {o.get('lon','')}"
+              + (f"  · {n} photographs of this patch" if n > 1 else ""))
     print("\nTo record a check:")
     print("  python3 scripts/plantdb.py confirm --file <name> --by \"Your Name\" --status confirmed")
 
@@ -1301,7 +1337,17 @@ def cmd_sheet_push(args):
     """Send the machine columns to the sheet. Never touches the human columns."""
     sheets, cfg = _sheets()
     svc = sheets.service(cfg)
-    obs = [o for o in load_obs() if reviewable(o)]
+    # One row per find. Seven rows for one willowherb patch is seven walks to
+    # verify one plant, and a steward has no way to tell they are the same thing.
+    # The non-representative photographs stay in the survey as evidence and stay
+    # visible on the site; they simply are not seven things to check.
+    #
+    # Safe to drop rows: the pull runs before the push on every pipeline tick, so
+    # a verification entered against a row that stops being pushed is already in
+    # the data before the row disappears.
+    reps = one_per_patch([o for o in load_obs() if reviewable(o)])
+    obs = [a for a, _, _ in reps]
+    photo_counts = {a["file"]: n for a, n, _ in reps}
     species = {s["id"]: s for s in enriched_species()}
     base = (load(PUBCFG_F, {}).get("r2_public_base") or "").rstrip("/")
     if base:
@@ -1329,9 +1375,15 @@ def cmd_sheet_push(args):
             feedback[o["file"]] = "… will be recorded on the next sync"
 
     n_sp = sheets.push_species(svc, cfg, list(species.values()))
-    n = sheets.push(svc, cfg, obs, species, base, existing, feedback)
-    print(f"Pushed {n} record(s) to the sheet, and {n_sp} species to the "
+    n = sheets.push(svc, cfg, obs, species, base, existing, feedback, photo_counts)
+    extra = sum(n for n in photo_counts.values() if n > 1) - sum(
+        1 for n in photo_counts.values() if n > 1)
+    print(f"Pushed {n} find(s) to the sheet, and {n_sp} species to the "
           f"'{sheets.SPECIES_TAB}' tab for the corrected-species dropdown.")
+    if extra:
+        print(f"  {extra} further photograph(s) are grouped into those finds "
+              f"(within {OCCURRENCE_RADIUS_M} m of one another) rather than listed "
+              f"as separate rows.")
     if refused:
         print(f"  ! {refused} row(s) have a verification the sync cannot accept. "
               f"The reason is now in each row's 'recorded?' column.")

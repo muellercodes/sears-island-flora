@@ -109,8 +109,15 @@ class LayoutInvariants(unittest.TestCase):
     def test_pull_reads_five_human_fields(self):
         self.assertEqual(sheets.N_HUMAN, 5)
 
-    def test_feedback_column_is_owned_by_the_pipeline_and_comes_last(self):
-        self.assertEqual(sheets.COLUMNS[-1], ("recorded?", "pipeline"))
+    def test_pipeline_columns_after_the_human_block_stay_pipeline_owned(self):
+        """`recorded?` and `photographs` sit past the human columns and are written
+        by the push. What matters is not which is last but that everything after
+        the human block belongs to the pipeline — a human column appearing there
+        would be read at the wrong index by `pull`."""
+        tail = sheets.COLUMNS[sheets.FIRST_HUMAN + sheets.N_HUMAN:]
+        self.assertTrue(tail, "the feedback column must exist")
+        self.assertEqual({owner for _, owner in tail}, {"pipeline"})
+        self.assertIn("recorded?", [name for name, _ in tail])
 
 
 if __name__ == "__main__":
