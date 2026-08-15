@@ -385,6 +385,33 @@
   .cb-surplus { font-size:11px; text-transform:uppercase; letter-spacing:.05em;
     color:var(--muted); font-weight:700; }
   .shot.cb-is-surplus img { opacity:.45; }
+
+  .cb-btn.cb-small { min-height:34px; padding:6px 12px; font-size:13px; }
+  .cb-btn.cb-danger { background:var(--toxic); color:#fff; }
+  .cb-lbl { display:block; font-size:12.5px; font-weight:600; margin:2px 0 5px; }
+  .cb-lbl .cb-sub { display:block; font-weight:400; color:var(--muted); font-size:12px; }
+  .cb-panel input[type=text] { width:100%; padding:10px 12px; border-radius:9px;
+    border:1px solid var(--line); background:var(--panel); color:var(--ink);
+    font:inherit; font-size:15px; margin-bottom:10px; }
+  /* Two coordinate boxes side by side on anything wider than a phone, stacked
+     below — a 6-decimal number in a 160px box is unreadable and unfixable. */
+  .cb-pair { display:grid; grid-template-columns:1fr; gap:8px; }
+  @media (min-width:560px) { .cb-pair { grid-template-columns:1fr 1fr; } }
+  .cb-badlist { margin:8px 0 0; padding-left:18px; font-size:13px; color:var(--muted); }
+  .cb-badlist li { margin:3px 0; }
+  .cb-help { margin-top:10px; padding:12px 14px; border-radius:9px;
+    border:1px solid var(--line); background:var(--panel); font-size:13.5px; }
+  /* Direct child only — the heading. A `b` INSIDE a paragraph is mid-sentence
+     ("On an iPhone, the reliable route is…") and blocking it strands the comma
+     on the next line. */
+  .cb-help > b { display:block; margin-bottom:6px; }
+  .cb-help p { margin:0 0 8px; line-height:1.5; color:var(--muted); }
+  .cb-help p:last-child { margin-bottom:0; }
+  .cb-walk { border:1px solid var(--line); border-radius:10px; padding:12px 14px;
+    margin-bottom:10px; background:var(--panel); font-size:14px; }
+  .cb-walkstate { margin:6px 0 0; padding-left:18px; font-size:13px; color:var(--muted); }
+  .cb-walkstate .cb-ok { color:var(--edible); }
+  .cb-walkstate .cb-no { color:var(--toxic); }
 </style>
 </head>
 <body>
@@ -891,6 +918,7 @@ const CB_TOKEN_KEY = "sif.contributor.token";
 const CB_QUEUE_KEY = "sif.contributor.queue";
 let ME = null;          // {name, role, can:[...]} once /api/me answers
 let CB_UNITS = [];      // occurrences on the open sheet, so handlers can find one
+const CB_PICKED = {};   // files chosen for an upload, with their EXIF verdicts
 
 // localStorage throws outright in Safari's private mode rather than failing soft,
 // and a botanist's phone is exactly where that happens. Never let it take the page.
@@ -963,9 +991,72 @@ function cbHeader() {
   el.hidden = false;
   el.innerHTML = `<span class="cb-who">${esc(ME.name)}
       <span class="cb-role">${esc(ME.role)}</span></span>
+    <button class="cb-btn cb-small" onclick="cbWalkDialog()">Upload a walk</button>
     ${queued ? `<span class="cb-offline">${queued} waiting to send — they will go
        when you have signal</span>` : ""}
     <button class="cb-out" onclick="cbSignOut()">Sign out of this device</button>`;
+}
+
+// ---- a whole walk at once -------------------------------------------------
+// The realistic contribution is not one photograph, it is eighty from a Saturday
+// morning. They go to the nightly Batch API run — half price, and results come
+// back over hours — so the honest thing to promise is tomorrow, and then to give
+// somewhere to look tomorrow.
+function cbWalkDialog() {
+  const k = "W";
+  CB_UNITS[k] = { anchor: { file: "" }, items: [] };
+  $("sheet-content").innerHTML = `
+    <div class="sheet-head">
+      <div><h2>Upload a walk</h2>
+        <div class="fam">New finds — photographs that are not of something already on the map</div></div>
+      <div><button class="x" id="closeX" aria-label="Close">×</button></div>
+    </div>
+    <div class="sheet-body">
+      <div class="cb-panel">
+        <h4>Photographs</h4>
+        <form onsubmit="return cbUpload(event, '${k}', true)">
+          <label class="cb-lbl">Which walk<span class="cb-sub">so you can find them again</span></label>
+          <input type="text" name="walk" placeholder="e.g. Causeway, 14 August">
+          <input type="file" name="photo" accept="image/*" multiple required
+                 onchange="cbPreflight(this, '${k}', false)">
+          <textarea name="note" placeholder="Anything about the walk as a whole (optional)."></textarea>
+          <button class="cb-btn" type="submit">Send them</button>
+          <p class="cb-hint">Every photograph needs its own location and date, taken from
+            the file. They are checked here first, so nothing is uploaded that would only
+            be refused later. Identification runs overnight — check back tomorrow.</p>
+        </form>
+        <div id="cb-msg-uW"></div>
+      </div>
+      <div id="cb-walks"><p class="cb-hint">Loading your earlier uploads…</p></div>
+    </div>`;
+  if (!$("sheet").open) $("sheet").showModal();
+  $("closeX").onclick = () => $("sheet").close();
+  cbWalks();
+}
+
+async function cbWalks() {
+  const el = $("cb-walks");
+  if (!el) return;
+  try {
+    const { walks } = await cbFetch("/api/walks");
+    if (!walks.length) { el.innerHTML = ""; return; }
+    el.innerHTML = `<h4 class="sec">Your uploads</h4>` + walks.map(w => {
+      const total = w.queued + w.recorded + w.refused;
+      return `<div class="cb-walk">
+        <b>${esc(w.walk)}</b> — ${total} photograph${total === 1 ? "" : "s"}
+        <ul class="cb-walkstate">
+          ${w.recorded ? `<li class="cb-ok">${w.recorded} in the survey</li>` : ""}
+          ${w.queued ? `<li>${w.queued} waiting for tonight's identification run</li>` : ""}
+          ${w.refused ? `<li class="cb-no">${w.refused} could not be accepted</li>` : ""}
+        </ul>
+        ${w.refusals.length ? `<ul class="cb-badlist">${w.refusals.map(r =>
+          `<li>${esc(r.file)} — ${esc(r.why)}</li>`).join("")}</ul>` : ""}
+      </div>`;
+    }).join("");
+  } catch (e) {
+    el.innerHTML = `<p class="cb-hint">Could not reach the survey to check on your
+      uploads. They are queued either way.</p>`;
+  }
 }
 
 function cbSignOut() {
@@ -1002,6 +1093,103 @@ window.addEventListener("online", () => { cbFlush(); });
 // without reloading, so boot has already been and gone. Without this, the link
 // silently does nothing for anyone who did not open it in a fresh tab.
 window.addEventListener("hashchange", () => { if (!ME) cbInit(); });
+
+// ---- reading a photograph's own metadata, before sending it --------------
+// `check-photos` moved into the page. It exists because the expensive surprise
+// in this project's history was 83 photographs reaching the survey with their
+// EXIF stripped, invisible until after they had been ingested, thumbnailed and
+// paid for. Catching that at the file picker costs nothing and tells the person
+// while they are still standing next to the plant.
+//
+// This is a courtesy, not the gate. The pipeline reads EXIF with Pillow, which
+// handles formats this cannot, and it is what actually decides — so anything
+// unreadable here is sent anyway rather than being wrongly refused. What this
+// buys is that the common failure is caught in a second instead of a day.
+//
+// Only the first 128 KB is read: EXIF lives in the first segment of a JPEG, and
+// slicing means an 80-photograph check does not pull ~400 MB through memory.
+const EXIF_HEAD = 128 * 1024;
+
+async function readExif(file) {
+  const buf = new DataView(await file.slice(0, EXIF_HEAD).arrayBuffer());
+  if (buf.byteLength < 4) return { readable: false };
+  if (buf.getUint16(0) !== 0xffd8) return { readable: false };   // not a JPEG
+  let off = 2;
+  while (off + 4 < buf.byteLength) {
+    if (buf.getUint8(off) !== 0xff) break;
+    const marker = buf.getUint8(off + 1), size = buf.getUint16(off + 2);
+    if (marker === 0xe1) {                                        // APP1
+      const start = off + 4;
+      if (buf.getUint32(start) !== 0x45786966) return { readable: false };  // "Exif"
+      return readTiff(buf, start + 6);
+    }
+    if (marker === 0xda) break;                                   // start of scan
+    off += 2 + size;
+  }
+  return { readable: true, gps: false, taken: "" };               // a JPEG with no APP1
+}
+
+function readTiff(buf, base) {
+  try {
+    const le = buf.getUint16(base) === 0x4949;
+    const u16 = o => buf.getUint16(o, le), u32 = o => buf.getUint32(o, le);
+    const ifd0 = base + u32(base + 4);
+    let exifPtr = 0, gpsPtr = 0;
+    for (let i = 0, n = u16(ifd0); i < n; i++) {
+      const e = ifd0 + 2 + i * 12, tag = u16(e);
+      if (tag === 0x8769) exifPtr = base + u32(e + 8);
+      if (tag === 0x8825) gpsPtr = base + u32(e + 8);
+    }
+    // A GPS IFD that exists but holds no latitude is the classic stripped photo:
+    // the block is present and the coordinates are gone, which is exactly why a
+    // file-size check was never enough to spot it.
+    let gps = false;
+    if (gpsPtr && gpsPtr < buf.byteLength) {
+      for (let i = 0, n = u16(gpsPtr); i < n; i++) {
+        if (u16(gpsPtr + 2 + i * 12) === 0x0002) gps = true;      // GPSLatitude
+      }
+    }
+    let taken = "";
+    if (exifPtr && exifPtr < buf.byteLength) {
+      for (let i = 0, n = u16(exifPtr); i < n; i++) {
+        const e = exifPtr + 2 + i * 12, tag = u16(e);
+        if (tag === 0x9003 || (tag === 0x9004 && !taken)) {       // DateTimeOriginal
+          const at = base + u32(e + 8);
+          let s = "";
+          for (let k = 0; k < 19 && at + k < buf.byteLength; k++) {
+            s += String.fromCharCode(buf.getUint8(at + k));
+          }
+          if (/^\d{4}[:-]\d{2}[:-]\d{2}/.test(s)) taken = s.replace(/:/g, "-").slice(0, 10);
+        }
+      }
+    }
+    return { readable: true, gps, taken };
+  } catch (e) {
+    return { readable: false };
+  }
+}
+
+// What to tell someone whose photograph will not be accepted. Written for a
+// person who has just been refused several in a row and needs to know what to do
+// differently, not what went wrong internally.
+const EXIF_HELP = `<div class="cb-help">
+  <b>Why a photograph gets refused, and how to fix it</b>
+  <p>A record has to say <i>where</i> and <i>when</i>, or nobody can go and check it
+     and it cannot be compared against a later visit. That has to come from the
+     photograph itself.</p>
+  <p><b>On an iPhone</b>, the reliable route is
+     <b>Photos&nbsp;→ select → Share → Options → turn ON “Location” → Save to Files</b>,
+     then upload from Files. Sharing or saving without that switch strips the location.
+     <b>Do not use “Take Photo”</b> in this page — a photograph taken inside a browser
+     never carries coordinates. Shoot in the Camera app, then upload it.</p>
+  <p><b>On a computer</b>, upload the original file straight off the camera or card.
+     Anything that has been through a messaging app, a web form or a re-export has
+     usually lost its metadata already, and it cannot be recovered.</p>
+  <p><b>Already have the photograph and it has no location?</b> If it is another shot
+     of a find that is already on the map, open that find and use
+     <i>Add a photograph of this find</i> — it inherits that find's coordinates, which
+     is a claim someone is making on purpose rather than a guess.</p>
+</div>`;
 
 // ---- what a signed-in person can do to one find --------------------------
 // Rendered per occurrence rather than per photograph, because an occurrence is
@@ -1045,23 +1233,70 @@ function cbUnitPanel(s, u) {
       <div id="cb-msg-v${k}"></div>
     </div>` : "";
 
+  // Attached to THIS find, so these photographs inherit its coordinates and do
+  // not need their own. That is the one case where a location the photograph did
+  // not carry is acceptable: somebody is asserting on purpose that this is
+  // another shot of that patch, which is a claim, not a guess.
   const add = can("upload") ? `
     <div class="cb-panel">
       <h4>Add a photograph of this find</h4>
       <form onsubmit="return cbUpload(event, ${k})">
-        <input type="file" name="photo" accept="image/*" capture="environment" required>
-        <textarea name="note" placeholder="Anything worth saying about this shot (optional)."></textarea>
-        <button class="cb-btn" type="submit">Send this photograph</button>
-        <p class="cb-hint">It goes through the same screening and identification as any
-          other photograph, and joins a find by where it was taken. Your phone's location
-          is sent with it and used <b>only</b> if the photograph itself arrives without
-          one — browsers usually strip that — and the record says which it used.
-          This one needs a connection; it is too big to hold on the device.</p>
+        <input type="file" name="photo" accept="image/*" multiple required
+               onchange="cbPreflight(this, ${k}, true)">
+        <textarea name="note" placeholder="Anything worth saying about these (optional)."></textarea>
+        <button class="cb-btn" type="submit">Send</button>
+        <p class="cb-hint">These join this find and take its coordinates, so they do not
+          need a location of their own — but they do need the date they were taken, which
+          the photograph carries. They go through the same screening and identification as
+          any other photograph. Needs a connection: too big to hold on the device.</p>
       </form>
       <div id="cb-msg-u${k}"></div>
     </div>` : "";
 
-  return check + add;
+  const curate = can("redundant") ? `
+    <div class="cb-panel">
+      <h4>Correct or take down this record</h4>
+      <form onsubmit="return cbEdit(event, ${k})">
+        <label class="cb-lbl">Coordinates
+          <span class="cb-sub">where the find actually is, if the fix was wrong</span></label>
+        <div class="cb-pair">
+          <input type="text" name="lat" inputmode="decimal" placeholder="latitude"
+                 value="${esc(o.lat || "")}">
+          <input type="text" name="lon" inputmode="decimal" placeholder="longitude"
+                 value="${esc(o.lon || "")}">
+        </div>
+        <label class="cb-lbl">Date photographed</label>
+        <input type="text" name="taken" placeholder="yyyy-mm-dd" value="${esc((o.taken || "").slice(0, 10))}">
+        <label class="cb-lbl">Curator's note
+          <span class="cb-sub">sits beside the identification's own description, never over it</span></label>
+        <textarea name="curator_note" placeholder="Anything a reader should know about this record.">${esc((o.curator_note || {}).text || "")}</textarea>
+        <button class="cb-btn cb-ghost" type="submit">Save these corrections</button>
+        <p class="cb-hint">The identification itself is not editable here — it stays as the
+          model wrote it so the survey can always show what the machine said beside what a
+          person found. To change what it <i>is</i>, record a field check above as
+          <b>Corrected in field</b>.</p>
+      </form>
+      <div id="cb-msg-e${k}"></div>
+      <form onsubmit="return cbWithdraw(event, ${k})" style="margin-top:14px">
+        <label class="cb-lbl">Take this record off the site</label>
+        <input type="text" name="reason" placeholder="Why — this is the only record of it">
+        <button class="cb-btn cb-danger" type="submit">Withdraw</button>
+        <p class="cb-hint">Reversible. The record and its original are kept; only the
+          published page and image go. Restore it from here at any time.</p>
+      </form>
+      <div id="cb-msg-w${k}"></div>
+    </div>` : "";
+
+  const restore = (can("redundant") && o.withdrawn) ? `
+    <div class="cb-panel">
+      <h4>Withdrawn</h4>
+      <p class="cb-said">Taken down by ${esc(o.withdrawn.by)}${
+        o.withdrawn.date ? ` on ${esc(o.withdrawn.date)}` : ""} — ${esc(o.withdrawn.reason || "")}</p>
+      <button class="cb-btn" onclick="cbRestore(${k})">Put it back</button>
+      <div id="cb-msg-r${k}"></div>
+    </div>` : "";
+
+  return restore + check + add + curate;
 }
 
 function cbToggleSpecies(k) {
@@ -1115,48 +1350,146 @@ async function cbVerify(ev, k) {
   return false;
 }
 
-// The phone's fix, offered alongside the file. The pipeline uses it only when the
-// photograph itself has none, and stamps the record so the two can never be
-// confused: where someone stood when they pressed send is a different claim from
-// where the camera was when the shutter opened.
-function cbWhereAmI() {
-  return new Promise(res => {
-    if (!navigator.geolocation) return res(null);
-    const done = p => res({ lat: p.coords.latitude, lon: p.coords.longitude,
-                            accuracy_m: Math.round(p.coords.accuracy) });
-    navigator.geolocation.getCurrentPosition(done, () => res(null),
-      { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 });
-  });
+// Check every chosen file before anything is sent, and say plainly which ones
+// will not do. `attached` relaxes the location requirement, because a photograph
+// added to an existing find inherits that find's coordinates — but never the
+// date requirement, since a new photograph of an old find is evidence the plant
+// is STILL there, and that is the whole value of it.
+async function cbPreflight(input, k, attached) {
+  const box = $(`cb-pre${k}`) || (() => {
+    const d = document.createElement("div");
+    d.id = `cb-pre${k}`;
+    input.insertAdjacentElement("afterend", d);
+    return d;
+  })();
+  const files = [...input.files];
+  if (!files.length) { box.innerHTML = ""; return; }
+  box.innerHTML = `<p class="cb-hint">Checking ${files.length} photograph${
+    files.length === 1 ? "" : "s"}…</p>`;
+  const checked = [];
+  for (const f of files) checked.push({ f, ex: await readExif(f) });
+  CB_PICKED[k] = checked;
+
+  const bad = checked.filter(c => c.ex.readable && (!c.ex.taken || (!attached && !c.ex.gps)));
+  const ok = checked.length - bad.length;
+  box.innerHTML =
+    `<p class="cb-said${bad.length ? " cb-bad" : ""}">
+       ${ok} of ${checked.length} ready to send.${
+       bad.length ? ` ${bad.length} cannot be accepted:` : ""}</p>`
+    + (bad.length ? `<ul class="cb-badlist">${bad.slice(0, 12).map(c =>
+        `<li>${esc(c.f.name)} — no ${[!c.ex.gps && !attached ? "location" : "",
+          !c.ex.taken ? "date" : ""].filter(Boolean).join(" and no ")}</li>`).join("")}
+        ${bad.length > 12 ? `<li>…and ${bad.length - 12} more</li>` : ""}</ul>${EXIF_HELP}` : "");
 }
 
-async function cbUpload(ev, k) {
+async function cbUpload(ev, k, walkField) {
   ev.preventDefault();
   const form = ev.target;
-  const file = form.photo.files[0];
-  if (!file) return false;
-  form.querySelector("button").disabled = true;
-  cbSaid(`cb-msg-u${k}`, "Finding your location, then sending…");
-  const fix = await cbWhereAmI();
-  const fd = new FormData();
-  fd.append("photo", file);
-  fd.append("filename", file.name || "field.jpg");
-  fd.append("note", form.note.value.trim());
-  if (fix) {
-    fd.append("lat", String(fix.lat));
-    fd.append("lon", String(fix.lon));
-    fd.append("accuracy_m", String(fix.accuracy_m));
+  const picked = CB_PICKED[k] || [...form.photo.files].map(f => ({ f, ex: { readable: false } }));
+  const attached = !walkField;
+  // Anything the page could read and knows is unacceptable is left behind rather
+  // than uploaded and refused a day later. Anything it could NOT read is sent —
+  // the pipeline's EXIF reader handles formats this one does not, and wrongly
+  // refusing a good photograph is the worse error.
+  const send = picked.filter(c => !c.ex.readable || (c.ex.taken && (attached || c.ex.gps)));
+  const held = picked.length - send.length;
+  if (!send.length) {
+    cbSaid(`cb-msg-u${k}`, "None of these carry the location and date a record needs. "
+           + "Nothing was sent.", true);
+    return false;
   }
-  if (file.lastModified) fd.append("taken", new Date(file.lastModified).toISOString().slice(0, 19));
-  try {
-    await cbFetch("/api/upload", { method: "POST", body: fd });
-    cbSaid(`cb-msg-u${k}`, `Sent${fix ? "" : " — but your device would not give a location, "
-      + "so unless the photograph carries its own the survey will hold it back"}. ${CB_LANDED}`);
-    form.reset();
-  } catch (e) {
-    cbSaid(`cb-msg-u${k}`, `${e.message}. Nothing was sent — try again when you have signal.`, true);
+  const walk = walkField ? (form.walk.value.trim() || new Date().toISOString().slice(0, 10)) : "";
+  const btn = form.querySelector("button");
+  btn.disabled = true;
+  let done = 0, failed = 0;
+  for (const { f } of send) {
+    cbSaid(`cb-msg-u${k}`, `Sending ${done + 1} of ${send.length}…`);
+    const fd = new FormData();
+    fd.append("photo", f);
+    fd.append("filename", f.name || "field.jpg");
+    fd.append("note", (form.note && form.note.value.trim()) || "");
+    if (walk) fd.append("walk", walk);
+    if (attached) fd.append("attach_to", CB_UNITS[k].anchor.file);
+    try {
+      await cbFetch("/api/upload", { method: "POST", body: fd });
+      done++;
+    } catch (e) {
+      failed++;
+    }
   }
-  form.querySelector("button").disabled = false;
+  cbSaid(`cb-msg-u${k}`,
+    `${done} photograph${done === 1 ? "" : "s"} sent.`
+    + (held ? ` ${held} left behind for missing location or date.` : "")
+    + (failed ? ` ${failed} failed to send — try those again when you have signal.` : "")
+    + ` They are queued for tonight's identification run: check back tomorrow, or open`
+    + ` “Your uploads” to see how they got on.`, failed > 0);
+  form.reset();
+  const pre = $(`cb-pre${k}`); if (pre) pre.innerHTML = "";
+  delete CB_PICKED[k];
+  btn.disabled = false;
   return false;
+}
+
+// ---- curation -------------------------------------------------------------
+async function cbCurate(path, body, msgId, okText) {
+  try {
+    await cbFetch(path, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    cbSaid(msgId, `${okText} ${CB_LANDED}`);
+    return true;
+  } catch (e) {
+    if (/not signed in|Failed to fetch|NetworkError|answered 5\d\d/.test(e.message)) {
+      cbEnqueue(path, body);
+      cbSaid(msgId, "No connection — kept on this phone and sent when you have signal.");
+    } else {
+      cbSaid(msgId, e.message, true);
+    }
+    return false;
+  }
+}
+
+function cbEdit(ev, k) {
+  ev.preventDefault();
+  const form = ev.target, o = CB_UNITS[k].anchor, changes = {};
+  // Only what actually changed. Sending an unchanged coordinate back would stamp
+  // it "corrected by hand" and bury the fact that it came from the photograph.
+  if (form.lat.value.trim() !== (o.lat || "") || form.lon.value.trim() !== (o.lon || "")) {
+    changes.lat = form.lat.value.trim();
+    changes.lon = form.lon.value.trim();
+  }
+  if (form.taken.value.trim() !== (o.taken || "").slice(0, 10)) {
+    changes.taken = form.taken.value.trim();
+  }
+  const note = form.curator_note.value.trim();
+  if (note !== ((o.curator_note || {}).text || "")) changes.curator_note = note;
+  if (!Object.keys(changes).length) {
+    cbSaid(`cb-msg-e${k}`, "Nothing changed.", true);
+    return false;
+  }
+  cbCurate("/api/edit", { file: o.file, changes }, `cb-msg-e${k}`, "Corrections recorded.");
+  return false;
+}
+
+function cbWithdraw(ev, k) {
+  ev.preventDefault();
+  const form = ev.target, o = CB_UNITS[k].anchor;
+  const reason = form.reason.value.trim();
+  if (!reason) {
+    cbSaid(`cb-msg-w${k}`, "A withdrawal needs a reason — it is the only record of "
+           + "why this left the survey.", true);
+    return false;
+  }
+  if (!confirm(`Take ${o.file} off the site?\n\nThe record and its original are kept and `
+             + `this can be undone.`)) return false;
+  cbCurate("/api/withdraw", { file: o.file, reason }, `cb-msg-w${k}`, "Withdrawn.");
+  return false;
+}
+
+function cbRestore(k) {
+  const o = CB_UNITS[k].anchor;
+  cbCurate("/api/restore", { file: o.file }, `cb-msg-r${k}`, "Restored.");
 }
 
 // ---- marking a photograph surplus ----------------------------------------

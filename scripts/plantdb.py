@@ -90,9 +90,10 @@ def save_obs(obs):
 # (a shared spreadsheet, say) conflict-free later: every field has one writer.
 VERIFY_STATUS = ("confirmed", "corrected", "rejected", "revisit")
 
-# How many verifications a single `sheet-pull` may withdraw before it stops and
-# asks. The pull runs unattended on a schedule, and an emptied STATUS column looks
-# exactly like a steward retracting everything.
+# How many verifications one unattended collection may withdraw before it stops
+# and asks. Withdrawals are the hardest data here to reconstruct — each one
+# represents somebody having walked out there — and in a field app withdrawing is
+# a single tap, so a run of them is likelier a mistake than that many changes of mind.
 MAX_UNATTENDED_CLEARS = 2
 
 
@@ -145,6 +146,62 @@ def may(role, capability):
     return role in CAPABILITIES.get(capability, ())
 
 
+# --- Where an original actually lives ---------------------------------------
+# This used to be answered "in photos/", and for photographs uploaded through the
+# site that answer was wrong in the way that matters: in a cloud pipeline run
+# photos/ exists only for the length of the runner, so every promise that a
+# withdrawn or surplus photograph was "kept in photos/" described a directory that
+# had already been destroyed.
+#
+# So the private inbox bucket is the archive of record for anything uploaded, and
+# the original is never deleted from it — not when a photograph is marked surplus,
+# not when a record is withdrawn, not when the thumbnail is pruned from the public
+# bucket. `archive_key` on the record is how to find it.
+#
+# The other two routes keep their own archives, and neither is photos/ either:
+# Drive holds the originals a contributor dropped there, which is where they
+# already were, and a local `ingest` reads a folder the person still has.
+def archive_of(o):
+    """Where this record's original is, in words, or None if it has no archive.
+
+    Used by anything that tells a person what a destructive-looking action will
+    actually destroy, so it must never name a location that is not really there.
+    """
+    if o.get("archive_key"):
+        return f"the contributor inbox bucket ({o['archive_key']})"
+    if o.get("drive_id"):
+        return "the shared Drive folder"
+    return None
+
+
+# --- Withdrawing a record ---------------------------------------------------
+# Soft, reversible, and attributed. A record is taken off the site and its public
+# thumbnail pruned, while the record itself and its original survive — the same
+# shape as a surplus mark, and for the same reason: this survey does not delete
+# things, and a mis-tap on a phone must not be able to destroy evidence.
+#
+# Distinct from `redundant`, which says "this frame is surplus to another of the
+# same find". A withdrawal says the record should not be in the survey at all —
+# somebody else's dog, a duplicate import, a photograph the contributor asked to
+# have taken down.
+def is_withdrawn(o):
+    return bool((o.get("withdrawn") or {}).get("by"))
+
+
+def withdrawal_problem(w):
+    """Why this withdrawal will not be accepted, or None.
+
+    A reason is required, unlike most fields here. A withdrawn record is invisible
+    on the site, so the only account of why it went is this string — and "it was
+    wrong" from someone who has since left the project is not an account.
+    """
+    if not w.get("by"):
+        return "needs a name — an unattributed withdrawal is not one"
+    if not (w.get("reason") or "").strip():
+        return "needs a reason — it is the only record of why this left the survey"
+    return None
+
+
 # --- Surplus photographs ----------------------------------------------------
 # Patches get photographed five to ten times. Grouping already keeps the listings
 # honest (`one_per_patch`), but every one of those frames is still carried: hosted
@@ -161,9 +218,9 @@ def may(role, capability):
 # that settles the identification, and throwing the second away silently destroys
 # the evidence for the first. A person decides, and signs it.
 #
-# Nothing is deleted. The original stays in photos/, the record stays in
-# observations.json with the mark on it, and the count of what the find is built
-# on stays truthful. Unmark it and the next publish carries it again.
+# Nothing is deleted. The original stays in its archive (see `archive_of`), the
+# record stays in observations.json with the mark on it, and the count of what the
+# find is built on stays truthful. Unmark it and the next publish carries it again.
 def is_redundant(o):
     """True when a person has marked this photograph surplus within its find."""
     r = o.get("redundant") or {}
@@ -274,18 +331,22 @@ def withheld_reason(o):
         fair vegetation photograph, but if no organism could be named it contributes
         no finding and only dilutes the pins that mean something.
       * A person has marked it surplus to another photograph of the same find. This
-        one is different in kind from the other three: the record is perfectly good
-        evidence and stays in the data, in the photograph count and in `photos/`.
-        It is the IMAGE that stops being carried, because the find already has a
-        frame representing it and the seventh shot of one patch costs an upload, a
-        hosted object and a reader's attention for nothing.
+        one is different in kind from the others: the record is perfectly good
+        evidence and stays in the data and in the photograph count. It is the IMAGE
+        that stops being carried, because the find already has a frame representing
+        it and the seventh shot of one patch costs an upload, a hosted object and a
+        reader's attention for nothing.
+      * A person has withdrawn it outright. Reversible, attributed, and the
+        original is untouched in its archive.
 
     Derived rather than stored as a flag, so it corrects itself — the moment a
-    re-run identifies the photo, `refresh-gps` recovers coordinates from the
-    original, or someone unmarks a surplus frame, it publishes with no bookkeeping
-    to remember. Withheld records stay in the data and in `todo`; nothing is
-    deleted.
+    re-run identifies the photo, someone unmarks a surplus frame or restores a
+    withdrawn one, it publishes again with no bookkeeping to remember. Withheld
+    records stay in the data and in `todo`. Nothing here deletes anything.
     """
+    if is_withdrawn(o):
+        w = o["withdrawn"]
+        return f"withdrawn by {w['by']} — {w.get('reason', 'no reason given')}"
     if o.get("rejected"):
         return "screened out — not a photograph of vegetation"
     if is_redundant(o):
@@ -318,7 +379,7 @@ def reviewable(o):
     under the photograph that represents it, and putting the other six there too is
     the seven-walks-for-one-shrub problem `one_per_patch` exists to end.
     """
-    return bool(not o.get("rejected") and not is_redundant(o)
+    return bool(not o.get("rejected") and not is_redundant(o) and not is_withdrawn(o)
                 and o.get("lat") and o.get("lon") and o.get("taken"))
 
 
@@ -432,7 +493,7 @@ def occurrences(obs, radius=OCCURRENCE_RADIUS_M, subject_only=False):
     """
     by_species = {}
     for o in obs:
-        if not _located(o) or o.get("rejected"):
+        if not _located(o) or o.get("rejected") or is_withdrawn(o):
             continue
         # `subject_only` for surfaces that list RECORDS rather than species: a
         # photograph belongs to one row there, under whatever it is a photograph
@@ -807,18 +868,18 @@ def _apply_fallback(rec, fallback):
     reads as by the time it reaches here.
     """
     fb = {k: v for k, v in (fallback or {}).items() if v not in (None, "")}
-    # All or nothing. Latitude from the phone and longitude from the photograph
-    # would place the record somewhere neither of them ever saw.
+    # All or nothing. Latitude from one source and longitude from another would
+    # place the record somewhere neither of them ever saw.
     if fb.get("lat") and fb.get("lon") and not (rec.get("lat") and rec.get("lon")):
         rec["lat"], rec["lon"] = blur(fb["lat"]), blur(fb["lon"])
-        # The record now states where the photographer was standing when they
-        # pressed send, which is not the same claim as where the camera was when
-        # the shutter opened. A survey that will not invent a species or a date
-        # must not present one of these as the other, so it is labelled — and
-        # only ever when the substitution actually happened.
-        rec["location_source"] = "field-device"
-        if fb.get("accuracy_m"):
-            rec["location_accuracy_m"] = fb["accuracy_m"]
+        # Labelled, and only ever when the substitution actually happened. The
+        # record is now stating a location that did not come from the photograph,
+        # and a survey whose deliverable IS location has to say so — a coordinate
+        # inherited from the find someone attached this to is a different claim
+        # from one the camera recorded, even when it is the better of the two.
+        rec["location_source"] = fb.get("source") or "inherited"
+        if fb.get("of"):
+            rec["location_from"] = fb["of"]
     if fb.get("taken") and not rec.get("taken"):
         rec["taken"] = fb["taken"]
     return rec
@@ -1263,7 +1324,8 @@ def cmd_publish(args):
             print(f"  {n:>3}  {reason}")
     if withheld:
         print(f"Withheld {withheld} local-only record(s) from {LOCAL_OBS_F.name} — not published.")
-    print("Full-resolution originals stay local in photos/ and are never published.")
+    print("Full-resolution originals are never published — they stay in the "
+          "contributor\ninbox bucket or in Drive, depending how they arrived.")
 
 
 def prune_r2(orphans, prefix):
@@ -1506,16 +1568,6 @@ def require(module, pip_name):
              f"  .venv/bin/pip install {pip_name}")
 
 
-def _sheets():
-    require("googleapiclient", "google-api-python-client google-auth")
-    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-    import sheets
-    cfg = sheets.config()
-    if not cfg:
-        sys.exit("Google Sheet not configured. Missing: " + ", ".join(sheets.missing_vars())
-                 + "\nSee 'Steward review in a Google Sheet' in the README.")
-    return sheets, cfg
-
 
 def _drive():
     require("googleapiclient", "google-api-python-client google-auth")
@@ -1609,11 +1661,11 @@ def cmd_ingest_drive(args):
 def verification_problem(v, species_ids):
     """Why these human columns are not an acceptable verification, or None.
 
-    One definition, used by both directions: the pull decides what to apply with it,
-    and the push writes the reason back into the sheet's "recorded?" column with it.
-    If those two ever disagreed, the sheet would tell a steward their row was fine
-    while the pipeline quietly dropped it — which is the failure this whole column
-    exists to prevent.
+    One definition, shared by everything that accepts or reports on a verification:
+    the site offers it, the Worker refuses early with it, `inbox-pull` decides what
+    to apply with it, and the receipt a contributor reads quotes it. If any two of
+    those disagreed, somebody would be told their field check had landed while the
+    pipeline quietly dropped it.
     """
     status = (v.get("status") or "").strip()
     if not status:
@@ -1629,200 +1681,81 @@ def verification_problem(v, species_ids):
     return None
 
 
-def cmd_sheet_push(args):
-    """Send the machine columns to the sheet. Never touches the human columns."""
-    sheets, cfg = _sheets()
-    svc = sheets.service(cfg)
-    # One row per find. Seven rows for one willowherb patch is seven walks to
-    # verify one plant, and a steward has no way to tell they are the same thing.
-    # The non-representative photographs stay in the survey as evidence and stay
-    # visible on the site; they simply are not seven things to check.
-    #
-    # Safe to drop rows: the pull runs before the push on every pipeline tick, so
-    # a verification entered against a row that stops being pushed is already in
-    # the data before the row disappears.
-    reps = one_per_patch([o for o in load_obs() if reviewable(o)])
-    obs = [a for a, _, _ in reps]
-    photo_counts = {a["file"]: n for a, n, _ in reps}
-    species = {s["id"]: s for s in enriched_species()}
-    base = (load(PUBCFG_F, {}).get("r2_public_base") or "").rstrip("/")
-    if base:
-        base += "/" + (load(PUBCFG_F, {}).get("r2_prefix") or "thumbs")
-    # Read the human columns first and write them straight back, so a push can never
-    # blank a steward's work — even one made between this read and the write.
-    existing = sheets.pull(svc, cfg)
 
-    # Mirror verifications that arrived any other way into the sheet's own columns.
-    # Two reasons, and the second is the important one:
-    #   * A steward opening the sheet should see every field check that exists, not
-    #     only the ones typed into this sheet. Otherwise a record confirmed in the
-    #     field app reads as still needing a walk.
-    #   * It closes the gap the pull's `via` test guards: once the sheet holds the
-    #     same verdict, the two channels agree and there is no blank cell for anyone
-    #     to misread as a withdrawal.
-    # Only ever fills a BLANK cell — a steward's own entry is never overwritten.
-    for o in obs:
-        v = o.get("verified") or {}
-        if v.get("status") and not (existing.get(o["file"], {}).get("status") or "").strip():
-            existing[o["file"]] = {"status": v["status"], "species_id": v.get("species_id", ""),
-                                   "by": v.get("by", ""), "date": v.get("date", ""),
-                                   "notes": v.get("notes", "")}
 
-    # Tell each steward whether their row actually landed. A refused verification
-    # otherwise only exists as a line in a CI log nobody opens, and the person who
-    # walked out there is left believing it was recorded.
-    ids = set(species)
-    feedback, refused = {}, 0
-    for o in obs:
-        v = existing.get(o["file"], {})
-        problem = verification_problem(v, ids)
-        if problem:
-            feedback[o["file"]] = f"⚠ not recorded — {problem}"
-            refused += 1
-        elif not (v.get("status") or "").strip():
-            feedback[o["file"]] = ""
-        elif o.get("verified"):
-            feedback[o["file"]] = f"✓ recorded {o['verified'].get('date', '')}".strip()
-        else:
-            feedback[o["file"]] = "… will be recorded on the next sync"
+# What an `edit` from the site may touch, and what it may never touch.
+#
+# The machine's answer is not editable. `species_id`, `note` and `confidence` stay
+# exactly as identification left them however wrong they are, because the survey's
+# whole claim rests on being able to show what the model said next to what a person
+# found — and because `export-imap` names an Observer only where a human verdict
+# exists. A correction is a `verified` record with status `corrected`, not an
+# overwrite, so a human is never able to quietly become the source of a machine
+# identification.
+#
+# What IS editable is the stuff a person can genuinely know better than the file
+# did: where it was and when. Both keep their original alongside, because a
+# coordinate somebody typed and a coordinate a camera recorded are different kinds
+# of claim and the survey has to be able to tell a reader which it is holding.
+EDITABLE = ("lat", "lon", "taken", "curator_note")
 
-    n_sp = sheets.push_species(svc, cfg, list(species.values()))
-    n = sheets.push(svc, cfg, obs, species, base, existing, feedback, photo_counts)
-    extra = sum(n for n in photo_counts.values() if n > 1) - sum(
-        1 for n in photo_counts.values() if n > 1)
-    print(f"Pushed {n} find(s) to the sheet, and {n_sp} species to the "
-          f"'{sheets.SPECIES_TAB}' tab for the corrected-species dropdown.")
-    if extra:
-        print(f"  {extra} further photograph(s) are grouped into those finds "
-              f"(within {OCCURRENCE_RADIUS_M} m of one another) rather than listed "
-              f"as separate rows.")
+
+def edit_problem(e, o):
+    """Why this edit will not be applied, or None."""
+    touched = [k for k in e if k in ("lat", "lon", "taken", "curator_note")]
+    refused = [k for k in e if k in ("species_id", "note", "confidence", "also", "rejected")]
     if refused:
-        print(f"  ! {refused} row(s) have a verification the sync cannot accept. "
-              f"The reason is now in each row's 'recorded?' column.")
-    print(f"  https://docs.google.com/spreadsheets/d/{cfg['sheet_id']}/edit")
-    if not base:
-        print("  (no r2_public_base set — the photo column will be empty)")
+        return (f"{', '.join(refused)} is the identification's own answer and is never "
+                "overwritten — record a correction instead, which keeps both")
+    if not touched:
+        return f"nothing to change (editable: {', '.join(EDITABLE)})"
+    if ("lat" in e) != ("lon" in e):
+        return "a coordinate has to be changed as a pair, or the record lands somewhere neither"
+    for k in ("lat", "lon"):
+        if k in e:
+            try:
+                float(e[k])
+            except (TypeError, ValueError):
+                return f"{k} is not a number"
+    if "lat" in e and not (-90 <= float(e["lat"]) <= 90):
+        return "latitude is outside -90..90"
+    if "lon" in e and not (-180 <= float(e["lon"]) <= 180):
+        return "longitude is outside -180..180"
+    if "taken" in e and e["taken"] and not re.match(r"^\d{4}-\d{2}-\d{2}", str(e["taken"])):
+        return "a capture date has to start yyyy-mm-dd"
+    return None
 
-
-def cmd_sheet_pull(args):
-    """Read steward verifications back. Previews by default; --yes to apply."""
-    sheets, cfg = _sheets()
-    svc = sheets.service(cfg)
-    rows = sheets.pull(svc, cfg)
-    obs = load_obs()
-    by_file = {o["file"]: o for o in obs}
-    ids = {s["id"] for s in load(SPECIES_F, [])}
-
-    changes, problems = [], []
-    for f, v in rows.items():
-        o = by_file.get(f)
-        if o is None:
-            problems.append(f"{f}: no such record (row ignored)")
-            continue
-        cur = o.get("verified") or {}
-        if not v["status"]:
-            # A blank STATUS withdraws only what the SHEET recorded. A verification
-            # that arrived any other way — `confirm` at a terminal, or a steward
-            # tapping it into the field app — has never been written into this
-            # column, so a blank cell against it is the sheet not having caught up,
-            # not somebody retracting it. Without this test the pull silently
-            # withdrew every non-sheet verification within two hours of it being
-            # made, which is the single most expensive kind of data here to lose.
-            # `via` defaults to "sheet" so verifications recorded before it existed
-            # keep behaving exactly as they did.
-            if cur and cur.get("via", "sheet") == "sheet":
-                changes.append((o, None, f"clear verification (was {cur.get('status')})"))
-            continue
-        # Same rules the push writes into the sheet's "recorded?" column, so a
-        # steward is never told their row is fine while this quietly drops it.
-        if (problem := verification_problem(v, ids)):
-            problems.append(f"{f}: {problem}")
-            continue
-        new = {"status": v["status"], "by": v["by"],
-               "date": v["date"] or datetime.date.today().isoformat(), "via": "sheet"}
-        if v["species_id"]:
-            new["species_id"] = v["species_id"]
-        if v["notes"]:
-            new["notes"] = v["notes"]
-        if new != cur:
-            changes.append((o, new, f"{cur.get('status', '—')} -> {v['status']} by {v['by']}"))
-
-    for p in problems:
-        print(f"  ! {p}")
-    if not changes:
-        print("No verification changes in the sheet." if not problems else "\nNo applicable changes.")
-        return
-
-    # Clearing a verification is the one destructive thing a pull can do, and it is
-    # indistinguishable from an accident: select the STATUS column, press delete,
-    # and every field check ever recorded is withdrawn on the next hourly run. A
-    # steward changing their mind about one or two records is ordinary; a dozen at
-    # once is a mis-click. Withdrawals are the hardest data here to reconstruct —
-    # they represent someone having walked out there — so past a small number this
-    # stops and waits for a person.
-    clears = [c for c in changes if c[1] is None]
-    if len(clears) > MAX_UNATTENDED_CLEARS and not args.force:
-        print(f"\n  ! {len(clears)} verification(s) would be WITHDRAWN in one pull:")
-        for o, _, desc in clears[:10]:
-            print(f"      {o['file'][:14]}…  {desc}")
-        if len(clears) > 10:
-            print(f"      ... and {len(clears) - 10} more")
-        print(f"\n    More than {MAX_UNATTENDED_CLEARS} at once usually means the STATUS column")
-        print("    was cleared or shifted by accident, not that this many people changed")
-        print("    their mind. Nothing was applied — not even the other changes.")
-        print("    Check the sheet, then re-run with --force if it is genuinely right.")
-        sys.exit(1)
-
-    print(f"\n{len(changes)} change(s) from the sheet:")
-    for o, new, desc in changes[:20]:
-        print(f"  {o['file'][:14]}…  {desc}")
-    if len(changes) > 20:
-        print(f"  ... and {len(changes) - 20} more")
-    if not args.yes:
-        print("\nNothing changed. Re-run with --yes to apply.")
-        return
-    for o, new, _ in changes:
-        if new is None:
-            o.pop("verified", None)
-        else:
-            o["verified"] = new
-    save_obs(obs)
-    cmd_build(args)
-    print(f"\nApplied {len(changes)} verification change(s).")
-
-
-# --- The contributor inbox --------------------------------------------------
-# Everything a signed-in contributor does on the site lands here, and nothing they
-# do reaches data/observations.json except through this function. It is the same
-# arrangement as the steward sheet, and it exists for the same reason: the survey
-# has exactly one writer, and adding a web app must not make it two.
-#
-# The three submission kinds and what each is allowed to touch:
-#
-#   verify     -> the `verified` block          (role: verifier, admin)
-#   redundant  -> the `redundant` block         (role: admin)
-#   upload     -> a new record, via ingest_file (role: contributor, verifier, admin)
-#
-# The role is re-checked here even though the Worker already checked it. See the
-# note on CAPABILITIES: the Worker is deployed separately from this repository,
-# and the rule about who may create a field check belongs in the half that is
-# reviewed and tested.
 
 def _sub_problem(s, obs_by_file, species_ids):
     """Why this submission cannot be applied, or None. Never raises on bad input —
     the payload came off the network and may be anything at all."""
     kind, role = s.get("kind"), s.get("role")
-    if kind not in ("verify", "redundant", "upload"):
+    # Which capability each kind needs. Withdrawing, restoring, editing and adding
+    # a catalogue entry are all curation, so they all sit behind `redundant` — the
+    # admin grant — rather than each inventing its own.
+    NEEDS = {"verify": "verify", "redundant": "redundant", "upload": "upload",
+             "edit": "redundant", "withdraw": "redundant", "restore": "redundant",
+             "species": "redundant"}
+    if kind not in NEEDS:
         return f"unknown submission kind '{kind}'"
-    need = {"verify": "verify", "redundant": "redundant", "upload": "upload"}[kind]
-    if not may(role, need):
-        return (f"a '{role}' may not {need} — this submission was accepted by the "
+    if not may(role, NEEDS[kind]):
+        return (f"a '{role}' may not {kind} — this submission was accepted by the "
                 f"Worker but is refused here")
     if not s.get("by"):
         return "no contributor name on the submission"
 
     if kind == "upload":
         return None                      # the ingest path does its own checking
+
+    if kind == "species":
+        sid = (s.get("species_id") or "").strip()
+        if not re.fullmatch(r"[a-z0-9-]{2,60}", sid):
+            return "a species id is lower-case letters, digits and hyphens"
+        if sid in species_ids:
+            return f"'{sid}' is already in the catalogue"
+        if not (s.get("common") or "").strip():
+            return "a catalogue entry needs a common name"
+        return None
 
     o = obs_by_file.get(s.get("file"))
     if o is None:
@@ -1834,6 +1767,17 @@ def _sub_problem(s, obs_by_file, species_ids):
         return verification_problem(
             {"status": s.get("status"), "species_id": s.get("species_id"),
              "by": s.get("by")}, species_ids)
+
+    if kind == "withdraw":
+        if is_withdrawn(o):
+            return "that record is already withdrawn"
+        return withdrawal_problem({"by": s["by"], "reason": s.get("reason")})
+
+    if kind == "restore":
+        return None if is_withdrawn(o) else "that record is not withdrawn"
+
+    if kind == "edit":
+        return edit_problem(s.get("changes") or {}, o)
 
     r = {"by": s["by"], "of": s.get("of"), "species_id": s.get("species_id")}
     if s.get("unmark"):
@@ -1900,20 +1844,27 @@ def cmd_inbox_pull(args):
 
     print(f"{len(subs)} submission(s) in the contributor inbox:")
     for s in applied:
-        print(f"  {s['kind']:<9} {s.get('file','')[:14]:<15} by {s['by']} ({s['role']})")
+        what = s.get("file") or s.get("species_id") or ""
+        print(f"  {s['kind']:<9} {what[:14]:<15} by {s['by']} ({s['role']})")
     for s in uploads:
         print(f"  upload    {s.get('filename','')[:14]:<15} by {s['by']} ({s['role']})")
     for s, why in refused:
-        print(f"  ! refused  {s.get('file', s.get('filename', ''))[:14]:<15} {why}")
+        print(f"  ! refused  {(s.get('file') or s.get('filename') or '')[:14]:<15} {why}")
     if not args.yes:
         print("\nNothing changed. Re-run with --yes to apply.")
         return
 
-    n_new = 0
+    n_new, upload_refusals = 0, []
     if uploads:
-        n_new = _apply_uploads(cfg, inbox, uploads, obs)
+        n_new, upload_refusals = _apply_uploads(cfg, inbox, uploads, obs, by_file)
+        refused += upload_refusals
+        uploads = [s for s in uploads if s not in [r[0] for r in upload_refusals]]
+    new_species = [s for s in applied if s["kind"] == "species"]
+    if new_species:
+        _apply_new_species(new_species)
     for s in applied:
-        _apply_submission(s, by_file[s["file"]])
+        if s["kind"] != "species":
+            _apply_submission(s, by_file[s["file"]])
     if applied or n_new:
         obs.sort(key=lambda o: o.get("taken", ""))
         save_obs(obs)
@@ -1941,8 +1892,71 @@ def _receipt(inbox, cfg, sub_id, status, detail):
         print(f"  ! could not acknowledge {sub_id}: {e} (it will be offered again)")
 
 
+def _apply_new_species(subs):
+    """Add catalogue entries somebody created on the site.
+
+    Marked `source: "hand (site)"` rather than `auto (...)`, which is not
+    cosmetic: `reconcile` only ever drops machine-created entries, precisely so
+    an unattended run cannot delete an editorial decision. An entry a person
+    wrote in order to correct a record to it must survive the next reconcile.
+    """
+    species = load(SPECIES_F, [])
+    for s in subs:
+        species.append({
+            "id": s["species_id"].strip(),
+            "common": s["common"].strip(),
+            "scientific": (s.get("scientific") or "").strip(),
+            "family": (s.get("family") or "").strip(),
+            "kind": (s.get("kind") or "herb").strip(),
+            "summary": (s.get("summary") or "").strip(),
+            "origin_status": (s.get("origin_status") or "unknown"),
+            "source": f"hand (site) — {s['by']}",
+        })
+        print(f"  + catalogue entry '{s['species_id']}' ({s['common']}) by {s['by']}")
+    save(SPECIES_F, species)
+
+
 def _apply_submission(s, o):
-    """Write one verification or redundancy mark onto its record."""
+    """Write one submission onto its record."""
+    today = datetime.date.today().isoformat()
+
+    if s["kind"] == "withdraw":
+        o["withdrawn"] = {"by": s["by"], "date": s.get("date") or today,
+                          "reason": s["reason"]}
+        return
+    if s["kind"] == "restore":
+        o.pop("withdrawn", None)
+        return
+    if s["kind"] == "edit":
+        changes = s.get("changes") or {}
+        # Coordinates and dates keep what they replaced. A coordinate somebody
+        # typed and a coordinate a camera recorded are different kinds of claim,
+        # and a survey whose deliverable is location has to be able to say which
+        # one it is holding — and to give the original back if the correction was
+        # itself wrong.
+        if "lat" in changes and "lon" in changes:
+            if o.get("lat") and "location_was" not in o:
+                o["location_was"] = {"lat": o["lat"], "lon": o["lon"],
+                                     "source": o.get("location_source", "exif")}
+            o["lat"], o["lon"] = blur(changes["lat"]), blur(changes["lon"])
+            o["location_source"] = "corrected-by-hand"
+            o["location_corrected_by"] = s["by"]
+        if "taken" in changes:
+            if o.get("taken") and "taken_was" not in o:
+                o["taken_was"] = o["taken"]
+            o["taken"] = changes["taken"]
+        if "curator_note" in changes:
+            # Additive annotation. It sits BESIDE the model's `note`, which is
+            # never touched, so the page can show both and a reader can tell a
+            # machine's description from a person's.
+            text = (changes["curator_note"] or "").strip()
+            if text:
+                o["curator_note"] = {"text": text, "by": s["by"],
+                                     "date": s.get("date") or today}
+            else:
+                o.pop("curator_note", None)
+        return
+
     if s["kind"] == "verify":
         if not s.get("status"):
             o.pop("verified", None)
@@ -1965,18 +1979,32 @@ def _apply_submission(s, o):
     o["redundant"] = r
 
 
-def _apply_uploads(cfg, inbox, uploads, obs):
+def _apply_uploads(cfg, inbox, uploads, obs, by_file):
     """Fetch uploaded photographs and put them through the ordinary ingest path.
 
     Nothing here shortcuts screening, identification or the content-hash dedupe.
-    A photograph taken in the field is a photograph; the only thing that makes it
-    different is that its coordinates may not have come from EXIF, and that is
-    recorded on the record rather than smoothed over.
+    A photograph uploaded from a phone is a photograph.
+
+    THE LOCATION RULE, which is the whole of the difference:
+
+    A record with no location or no date is not a survey record — it cannot be
+    checked and cannot be compared against a later visit — so one is never
+    accepted. There are exactly two ways an upload gets a location, and neither
+    is a guess:
+
+      * the photograph carries its own, read from EXIF by `exif_of`; or
+      * it was attached to a find that already exists, and inherits THAT find's
+        coordinates, because the person uploading it said this is another
+        photograph of that patch.
+
+    The browser refuses most of these before a byte is sent, which is the low
+    friction part. This is the check that actually decides, because it is the one
+    running where the authoritative EXIF reader is.
     """
     known = {o.get("hash") for o in obs if o.get("hash")}
     tmp = ROOT / ".inbox-uploads"
     tmp.mkdir(exist_ok=True)
-    added = 0
+    added, rejected = 0, []
     try:
         for s in uploads:
             try:
@@ -1987,25 +2015,52 @@ def _apply_uploads(cfg, inbox, uploads, obs):
             name = re.sub(r"[^A-Za-z0-9._-]", "_", s.get("filename") or f"{s['id']}.jpg")
             src = tmp / name
             src.write_bytes(data)
+
+            # Inheriting the find's coordinates. Only from a record that exists and
+            # is actually located — never from whatever the browser claimed the
+            # find was, or a bad `attach_to` would place a photograph anywhere.
+            inherit = {}
+            anchor = by_file.get(s.get("attach_to") or "")
+            if anchor and _located(anchor):
+                inherit = {"lat": anchor["lat"], "lon": anchor["lon"],
+                           "source": "attached-to-find", "of": anchor["file"]}
+
             rec = ingest_file(
-                src, s.get("batch") or "field-app", obs, known,
-                extra={"submitted_by": s["by"], "submitted": s.get("submitted", "")},
-                # The phone's own fix and clock, used only if the photograph
-                # arrived without its own. See `location_source` in ingest_file.
-                fallback={"lat": s.get("lat"), "lon": s.get("lon"),
-                          "accuracy_m": s.get("accuracy_m"),
-                          "taken": (s.get("taken") or "")[:19]})
+                src, s.get("walk") or s.get("batch") or "field-app", obs, known,
+                extra={"submitted_by": s["by"], "submitted": s.get("submitted", ""),
+                       # Where the original lives now and permanently. photos/ is
+                       # emptied with the runner; this is the archive that is not.
+                       "archive_key": f"originals/{s['id']}",
+                       "walk": s.get("walk") or ""},
+                fallback={"lat": inherit.get("lat"), "lon": inherit.get("lon"),
+                          "taken": (s.get("taken") or "")[:19],
+                          "source": inherit.get("source"), "of": inherit.get("of")})
             if rec is None:
                 print(f"  - {name}: already in the library, or could not be read")
                 continue
-            # ingest_file prefers what EXIF gave it (setdefault), so this reports
-            # what the record actually ended up with rather than what was offered.
-            if rec.get("location_source") == "field-device":
-                print(f"    location from the contributor's device, not the photograph's EXIF")
+
+            # The gate. A photograph that reached here without a location or a date
+            # is not a survey record and never becomes one, so the record is undone
+            # rather than left to sit withheld forever with nobody told why.
+            missing = [w for w, ok in (("location", rec.get("lat") and rec.get("lon")),
+                                       ("capture date", rec.get("taken"))) if not ok]
+            if missing:
+                obs.remove(rec)
+                known.discard(rec["hash"])
+                (THUMBS / rec["file"]).unlink(missing_ok=True)
+                (PHOTOS / rec["file"]).unlink(missing_ok=True)
+                rejected.append((s, f"the photograph has no {' and no '.join(missing)}. "
+                                    "Re-export the original with its metadata intact, or "
+                                    "attach it to a find that already exists."))
+                print(f"  ! {name}: refused — no {' and no '.join(missing)}")
+                continue
+
+            if rec.get("location_source") == "attached-to-find":
+                print(f"    location inherited from {inherit['of'][:14]}… (attached to that find)")
             added += 1
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
-    return added
+    return added, rejected
 
 
 def cmd_contributor(args):
@@ -2112,8 +2167,65 @@ def cmd_redundant(args):
     save_obs(obs)
     cmd_build(args)
     print(f"{args.file} is surplus to {args.of} for {r['species_id']}, marked by {args.by}.")
-    print("It stays in photos/ and in the data, and stops being carried on the site "
-          "from the next publish.")
+    where = archive_of(o) or "wherever its original came from"
+    print(f"The record and its original are untouched \u2014 the original is in {where}.")
+    print("Only the published image stops being carried, from the next publish.")
+
+
+def cmd_withdraw(args):
+    """Take a record off the site, or put it back, from a terminal.
+
+    The site does this too, but a withdrawn record is not in the published data —
+    that is the point of withdrawing it — so the site can only offer to restore
+    one while it is still carried. This is the way back for anything already gone,
+    and the reason the withdrawal is stored rather than the record deleted.
+    """
+    obs = load_obs()
+    o = next((x for x in obs if x["file"] == args.file or x["id"] == args.file), None)
+    if o is None:
+        sys.exit(f"No record named '{args.file}'.")
+    if args.restore:
+        if not is_withdrawn(o):
+            sys.exit(f"{o['file']} is not withdrawn.")
+        was = o.pop("withdrawn")
+        print(f"Restored {o['file']} (withdrawn by {was['by']}: {was.get('reason','')}).")
+    else:
+        w = {"by": args.by, "reason": args.reason or "",
+             "date": args.date or datetime.date.today().isoformat()}
+        if (why := withdrawal_problem(w)):
+            sys.exit(f"Refused: {why}")
+        o["withdrawn"] = w
+        where = archive_of(o) or "wherever its original came from"
+        print(f"Withdrew {o['file']} — {w['reason']}")
+        print(f"The record is kept and the original is in {where}. Put it back with:")
+        print(f"  python3 scripts/plantdb.py withdraw --file {o['file']} --restore")
+    save_obs(obs)
+    cmd_build(args)
+
+
+def cmd_withheld(args):
+    """Everything the site is not carrying, and why.
+
+    Withdrawn and surplus records are invisible on the published site by design,
+    which makes them hard to find again. This is where they are.
+    """
+    obs = load_obs()
+    rows = [(withheld_reason(o), o) for o in obs]
+    rows = [(r, o) for r, o in rows if r]
+    if not rows:
+        print("Everything is carried.")
+        return
+    from collections import defaultdict
+    groups = defaultdict(list)
+    for r, o in rows:
+        groups[r.split(" — ")[0]].append((r, o))
+    print(f"{len(rows)} record(s) not carried on the site:\n")
+    for head, items in sorted(groups.items(), key=lambda kv: -len(kv[1])):
+        print(f"=== {head} ({len(items)}) ===")
+        for r, o in items[: args.limit or 100]:
+            extra = r.split(" — ", 1)[1] if " — " in r else ""
+            print(f"  {o['file']}{('  ' + extra) if extra else ''}")
+        print()
 
 
 def cmd_cache(args):
@@ -2510,20 +2622,6 @@ def cmd_doctor(args):
     check(bool(cfg.get("notice")) is False, "No proof-of-concept notice (real data)",
           "Proof-of-concept notice still shown — remove `notice` from publish-config.json when real data lands")
 
-    if venv.exists():
-        ok_g = subprocess.run([str(venv), "-c", "import googleapiclient"],
-                              capture_output=True).returncode == 0
-        check(ok_g, "Google Sheets client installed",
-              "Sheets client missing — .venv/bin/pip install google-api-python-client google-auth")
-    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-    try:
-        import sheets as _sh
-        check(bool(_sh.config()), "Google Sheet configured",
-              "Google Sheet not configured (" + ", ".join(_sh.missing_vars())
-              + ") — optional; enables steward review")
-    except ImportError:
-        pass
-
     # Contributor mode. Optional throughout — without it the site is the read-only
     # survey it has always been — so every branch here is informational, and none
     # of it can make `doctor` fail.
@@ -2603,7 +2701,8 @@ def cmd_remove(args):
     if len(sel) > 8:
         print(f"  ... and {len(sel) - 8} more")
     print("\nThis removes the records, their thumbnails, and their R2 objects.")
-    print("Originals in photos/ are NOT touched — re-ingest to bring them back.")
+    print("Originals are NOT touched — an uploaded photograph stays in the contributor\n"
+          "inbox bucket and a Drive one stays in Drive, so this is recoverable.")
     if not args.yes:
         print("\nNothing changed. Re-run with --yes to delete.")
         return
@@ -3165,13 +3264,6 @@ if __name__ == "__main__":
                     help="keep these records out of git and off the published site")
     dr.add_argument("--limit", type=int, help="only fetch this many (good for a first run)")
     dr.set_defaults(func=cmd_ingest_drive)
-    sp_ = sub.add_parser("sheet-push", help="send records to the steward review sheet")
-    sp_.set_defaults(func=cmd_sheet_push)
-    pl = sub.add_parser("sheet-pull", help="read steward verifications back from the sheet")
-    pl.add_argument("--yes", action="store_true", help="apply (otherwise just previews)")
-    pl.add_argument("--force", action="store_true",
-                    help=f"allow withdrawing more than {MAX_UNATTENDED_CLEARS} verifications at once")
-    pl.set_defaults(func=cmd_sheet_pull)
     ip = sub.add_parser("inbox-pull", help="apply what contributors submitted through the site")
     ip.add_argument("--yes", action="store_true", help="apply (otherwise just previews)")
     ip.add_argument("--force", action="store_true",
@@ -3193,6 +3285,16 @@ if __name__ == "__main__":
     rd.add_argument("--notes", help="why")
     rd.add_argument("--unmark", action="store_true", help="carry this photograph again")
     rd.set_defaults(func=cmd_redundant)
+    wd = sub.add_parser("withdraw", help="take a record off the site (reversible), or restore it")
+    wd.add_argument("--file", required=True, help="filename or record id")
+    wd.add_argument("--by", help="who decided — a name, not an initial")
+    wd.add_argument("--reason", help="why — this is the only record of it")
+    wd.add_argument("--date", help="when (defaults to today)")
+    wd.add_argument("--restore", action="store_true", help="put it back on the site")
+    wd.set_defaults(func=cmd_withdraw)
+    wh = sub.add_parser("withheld", help="everything the site is not carrying, and why")
+    wh.add_argument("--limit", type=int, help="how many to list per reason")
+    wh.set_defaults(func=cmd_withheld)
     sub.add_parser("cache", help="what we've already paid to identify, and what it cost").set_defaults(func=cmd_cache)
     fw = sub.add_parser("fieldwork", help="what to go and check, and what would settle each")
     fw.add_argument("--status", help="only this regulatory status")

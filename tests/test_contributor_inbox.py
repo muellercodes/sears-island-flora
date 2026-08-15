@@ -286,6 +286,137 @@ class WhatTheDrainWillApply(unittest.TestCase):
             self.assertIsNotNone(plantdb._sub_problem(junk, self.by_file, IDS), junk)
 
 
+class WhatAnEditMayChange(unittest.TestCase):
+    """The site can edit entries now that the steward sheet is gone. What it must
+    never edit is the machine's own answer.
+
+    `species_id`, `note` and `confidence` stay exactly as identification left them,
+    however wrong they are, because the survey's claim rests on being able to show
+    what the model said beside what a person found — and because `export-imap`
+    names an Observer only where a human verdict exists. A correction is a
+    `verified` record, not an overwrite.
+    """
+
+    def setUp(self):
+        self.o = obs("a.jpg", "willowherb")
+
+    def test_accepts_a_corrected_coordinate(self):
+        self.assertIsNone(plantdb.edit_problem({"lat": "44.45", "lon": "-68.88"}, self.o))
+
+    def test_refuses_to_overwrite_the_machines_identification(self):
+        for field in ("species_id", "note", "confidence"):
+            problem = plantdb.edit_problem({field: "anything"}, self.o)
+            self.assertIn("never overwritten", problem or "", field)
+
+    def test_refuses_half_a_coordinate(self):
+        self.assertIn("as a pair", plantdb.edit_problem({"lat": "44.45"}, self.o))
+
+    def test_refuses_a_coordinate_that_is_not_a_number(self):
+        self.assertIn("not a number",
+                      plantdb.edit_problem({"lat": "near the causeway", "lon": "-68.88"}, self.o))
+
+    def test_refuses_an_impossible_coordinate(self):
+        self.assertIn("outside", plantdb.edit_problem({"lat": "441.0", "lon": "-68.88"}, self.o))
+
+    def test_an_edit_keeps_what_it_replaced(self):
+        """A coordinate somebody typed and one a camera recorded are different
+        kinds of claim, and the original has to be recoverable if the correction
+        was itself wrong."""
+        o = obs("a.jpg", "willowherb")
+        plantdb._apply_submission(
+            {"kind": "edit", "by": "Ada Admin", "date": "2026-08-15",
+             "changes": {"lat": "44.4600", "lon": "-68.8700"}}, o)
+        self.assertEqual(o["lat"], "44.46")
+        self.assertEqual(o["location_source"], "corrected-by-hand")
+        self.assertEqual(o["location_was"]["lat"], "44.449614")
+
+    def test_a_curator_note_sits_beside_the_models_note_not_over_it(self):
+        o = obs("a.jpg", "willowherb", note="Dense clonal stand, model description.")
+        plantdb._apply_submission(
+            {"kind": "edit", "by": "Ada Admin", "changes": {"curator_note": "Cut back in 2025."}}, o)
+        self.assertEqual(o["note"], "Dense clonal stand, model description.")
+        self.assertEqual(o["curator_note"]["text"], "Cut back in 2025.")
+        self.assertEqual(o["curator_note"]["by"], "Ada Admin")
+
+
+class WithdrawingARecord(unittest.TestCase):
+    """Soft, reversible and attributed — the site can take a record down but not
+    destroy it. A mis-tap on a phone must not be able to lose evidence."""
+
+    def test_a_withdrawal_needs_a_reason(self):
+        self.assertIn("needs a reason", plantdb.withdrawal_problem({"by": "Ada Admin"}))
+        self.assertIn("needs a reason",
+                      plantdb.withdrawal_problem({"by": "Ada Admin", "reason": "   "}))
+
+    def test_a_withdrawal_needs_a_name(self):
+        self.assertIn("needs a name", plantdb.withdrawal_problem({"reason": "a duplicate"}))
+
+    def test_a_withdrawn_record_leaves_the_site_but_not_the_data(self):
+        o = obs("a.jpg", "willowherb",
+                withdrawn={"by": "Ada Admin", "date": "2026-08-15", "reason": "somebody's dog"})
+        self.assertTrue(plantdb.is_withdrawn(o))
+        self.assertFalse(plantdb.is_publishable(o))
+        self.assertIn("withdrawn by Ada Admin", plantdb.withheld_reason(o))
+        self.assertIn("somebody's dog", plantdb.withheld_reason(o))
+
+    def test_restoring_puts_it_back(self):
+        o = obs("a.jpg", "willowherb",
+                withdrawn={"by": "Ada Admin", "date": "2026-08-15", "reason": "wrong"})
+        plantdb._apply_submission({"kind": "restore", "by": "Ada Admin"}, o)
+        self.assertFalse(plantdb.is_withdrawn(o))
+        self.assertTrue(plantdb.is_publishable(o))
+
+    def test_a_withdrawn_record_is_not_part_of_any_find(self):
+        """Otherwise it still anchors an occurrence, and a find that was taken
+        down goes on being listed under a photograph nobody can see."""
+        a = obs("a.jpg", "willowherb")
+        b = obs("b.jpg", "willowherb",
+                withdrawn={"by": "A", "date": "2026-08-15", "reason": "x"})
+        found = plantdb.occurrences([a, b])
+        self.assertEqual([m["file"] for m in found[0]["members"]], ["a.jpg"])
+
+
+class TheArchiveIsNotThePhotosFolder(unittest.TestCase):
+    """Every "nothing is deleted" promise has to name somewhere the original
+    really is. photos/ is emptied with the runner on every cloud pipeline run, so
+    for an uploaded photograph it was never the answer."""
+
+    def test_an_uploaded_original_is_in_the_inbox_bucket(self):
+        o = obs("a.jpg", "willowherb", archive_key="originals/abc-123")
+        self.assertIn("contributor inbox bucket", plantdb.archive_of(o))
+
+    def test_a_drive_photograph_is_archived_in_drive(self):
+        self.assertIn("Drive", plantdb.archive_of(obs("a.jpg", drive_id="1AbC")))
+
+    def test_a_record_with_no_archive_says_so_rather_than_guessing(self):
+        self.assertIsNone(plantdb.archive_of(obs("a.jpg")))
+
+
+class AddingASpeciesFromTheSite(unittest.TestCase):
+    """A correction needs something to correct TO, so admins can create catalogue
+    entries. Those entries must survive `reconcile`, which drops machine-created
+    ones — an unattended run deleting an editorial decision is exactly what the
+    `source` field exists to prevent."""
+
+    def problem(self, **sub):
+        return plantdb._sub_problem({"kind": "species", "role": "admin", "by": "A", **sub},
+                                    {}, IDS)
+
+    def test_accepts_a_new_entry(self):
+        self.assertIsNone(self.problem(species_id="sea-rocket", common="Sea Rocket"))
+
+    def test_refuses_an_id_that_already_exists(self):
+        self.assertIn("already in the catalogue",
+                      self.problem(species_id="willowherb", common="Willowherb"))
+
+    def test_refuses_an_id_that_is_not_an_id(self):
+        for bad in ("Sea Rocket", "sea_rocket", "", "a"):
+            self.assertIsNotNone(self.problem(species_id=bad, common="Sea Rocket"), bad)
+
+    def test_refuses_an_entry_with_no_common_name(self):
+        self.assertIn("common name", self.problem(species_id="sea-rocket", common=""))
+
+
 class WhereAVerificationCameFrom(unittest.TestCase):
     """`via` — added because the pull could silently withdraw checks it had never
     recorded.
@@ -308,37 +439,46 @@ class WhereAVerificationCameFrom(unittest.TestCase):
             self.assertEqual(o["verified"]["via"], via)
 
 
-class TheUploadPathIsTheOrdinaryOne(unittest.TestCase):
-    """A photograph from the field is a photograph. What is special about it is
-    only where its coordinates came from — and that is recorded, never smoothed
-    over."""
+class WhereAnUploadGetsItsLocation(unittest.TestCase):
+    """Two ways, and neither is a guess: the photograph carries its own, or it was
+    attached to a find that already exists and inherits that find's coordinates.
 
-    def test_a_device_fix_is_only_a_fallback_and_says_so(self):
+    There used to be a third — the phone's fix at upload time — and it was wrong.
+    It records where the photographer was standing when they pressed send, so
+    anyone who walked the island and uploaded that evening would have had their
+    kitchen recorded as the find.
+    """
+
+    def test_an_attached_photograph_inherits_the_finds_coordinates(self):
         rec = {"lat": "", "lon": "", "taken": ""}
         plantdb._apply_fallback(rec, {"lat": "44.4712", "lon": "-68.8834",
-                                      "accuracy_m": "8", "taken": "2026-08-14T14:05:00"})
-        self.assertEqual(rec["location_source"], "field-device")
+                                      "source": "attached-to-find", "of": "rep.jpg",
+                                      "taken": "2026-08-14T14:05:00"})
         self.assertEqual(rec["lat"], "44.4712")
-        self.assertEqual(rec["taken"], "2026-08-14T14:05:00")
+        self.assertEqual(rec["location_source"], "attached-to-find")
+        self.assertEqual(rec["location_from"], "rep.jpg")
 
     def test_the_photographs_own_coordinates_always_win(self):
         """And nothing is stamped, because nothing was substituted — a record that
-        claimed a device fix it had not used would be the same class of error as
-        inventing a date."""
+        claimed an inherited location it had not used would be the same class of
+        error as inventing a date."""
         rec = {"lat": "44.4500", "lon": "-68.8800", "taken": "2026-08-01T09:00:00"}
-        plantdb._apply_fallback(rec, {"lat": "44.4712", "lon": "-68.8834"})
+        plantdb._apply_fallback(rec, {"lat": "44.4712", "lon": "-68.8834",
+                                      "source": "attached-to-find"})
         self.assertEqual(rec["lat"], "44.4500")
         self.assertNotIn("location_source", rec)
 
     def test_half_a_coordinate_pair_is_never_used(self):
-        """Latitude from the phone and longitude from the photograph would place
-        the record somewhere neither of them saw."""
+        """One source's latitude with another's longitude would place the record
+        somewhere neither of them saw."""
         rec = {"lat": "", "lon": "", "taken": ""}
-        plantdb._apply_fallback(rec, {"lat": "44.4712", "lon": ""})
+        plantdb._apply_fallback(rec, {"lat": "44.4712", "lon": "", "source": "attached-to-find"})
         self.assertEqual(rec["lat"], "")
         self.assertNotIn("location_source", rec)
 
-    def test_an_upload_with_no_location_at_all_is_withheld_like_any_other(self):
+    def test_a_record_with_no_location_is_still_withheld(self):
+        """The upload gate refuses these outright, but the derived rule stays as
+        the backstop for every other way a record can arrive."""
         o = obs("field.jpg", "unknown", lat="", lon="", submitted_by="C. Con")
         self.assertIn("no location", plantdb.withheld_reason(o))
 

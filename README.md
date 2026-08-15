@@ -91,15 +91,16 @@ everything under `verified` is written only by `confirm`. The site groups record
 by what is currently believed — the human verdict where there is one — while still
 showing what the model originally said.
 
-That separation is deliberate beyond tidiness: it means an outside editor (a shared
-spreadsheet for the Friends of Sears Island, say) can own the verification columns
-outright without ever colliding with the pipeline, because no field has two writers.
+That separation is deliberate beyond tidiness: it is what lets an outside editor own
+the verification fields outright without ever colliding with the pipeline, because no
+field has two writers. It is also what makes an edit on the website safe — see
+[contributor mode](#contributor-mode-signing-in-on-the-site), where a correction is
+recorded rather than written over the model's answer.
 
-There are three ways to record one — `confirm` at a terminal, the steward sheet, and
-[contributor mode](#contributor-mode-signing-in-on-the-site) on the site itself — and
-each records which it was in `verified.via`. None of them infers anything: no
-confidence score, no re-run and no similarity between photographs has ever set one of
-these fields, and nothing in the pipeline is permitted to.
+There are two ways to record one — `confirm` at a terminal and the website — and each
+records which it was in `verified.via`. Neither infers anything: no confidence score,
+no re-run and no similarity between photographs has ever set one of these fields, and
+nothing in the pipeline is permitted to.
 
 Unverified records are marked as such everywhere they appear, and their map pins are
 drawn with an open, dashed ring — the ring is the claim, and it is not closed yet.
@@ -107,11 +108,16 @@ drawn with an open, dashed ring — the ring is the claim, and it is not closed 
 ## Photos from a shared Drive folder
 
 Contributors drop photos in a shared Google Drive folder; the pipeline reads that
-folder and nothing else. This uses the same service account as the review sheet, so
-there is no desktop app and no local mirror — and it runs headlessly, which matters
-the day this moves off a laptop.
+folder and nothing else. It runs headlessly, which matters the day this moves off a
+laptop.
 
-**Enable the Drive API** for the project (separate from Sheets):
+This is now the *second* way photographs arrive, and the older one. Most contributors
+should use [Upload a walk](#uploading-a-walk) on the site instead: it checks each
+photograph's location and date before anything is sent, which is the failure this
+project has paid for before. Drive stays because it is the lowest-friction thing to
+explain to someone who will not sign in.
+
+**Enable the Drive API** for the project:
 <https://console.cloud.google.com/apis/library/drive.googleapis.com>
 
 Share the folder with the service account's `client_email`, then find its id:
@@ -133,156 +139,21 @@ remembered so bytes are never re-fetched; that is separate from the content-hash
 dedupe, which stops the same photo being added twice even under a new name. A file id
 is recorded only after the bytes are on disk, so a failed download retries next run.
 
-## Steward review in a Google Sheet
-
-Field verification does not need a developer. A shared sheet gives the Friends of
-Sears Island a place to confirm, correct, and annotate records with the photo right
-there in the row.
-
-**This is not a general two-way sync, deliberately.** Every column has exactly one
-writer:
-
-| Columns | Owner | Direction |
-|---|---|---|
-| file, photo, photographed, latitude, longitude, AI identification, AI confidence, AI notes | pipeline | push → sheet |
-| STATUS, corrected species, verified by, verified date, field notes | **a person** | sheet → pull |
-| recorded? | pipeline | push → sheet |
-
-### Telling a steward whether their row landed
-
-`recorded?` is the last column and closes the loop. A refused verification otherwise
-exists only as a line in a CI log nobody opens, and the person who walked out there
-is left believing it was recorded.
-
-| It says | It means |
-|---|---|
-| *(blank)* | nothing entered yet |
-| `✓ recorded 2026-08-02` | it is in the survey |
-| `… will be recorded on the next sync` | valid, entered since the last pull |
-| `⚠ not recorded — needs a name in 'verified by'` | refused, with the reason. Fix the row and it syncs next run. |
-
-The rule that decides this is the same function the pull uses to decide what to
-apply (`verification_problem`), so the sheet can never tell someone their row is
-fine while the pipeline drops it.
-
-Two more things make the sheet usable by someone who has never read this file:
-
-- **A `Species` tab**, pushed with the records, listing every id with its common and
-  scientific name. `corrected species` takes an *id* — `japanese-knotweed`, not
-  "Japanese knotweed" — which nobody can be expected to guess, and a mistyped id is
-  the likeliest reason a real field check gets refused. It is now a dropdown you
-  pick from.
-- **Notes on every header cell** explaining what the column is for and what each
-  STATUS value means.
-
-Both dropdowns are deliberately **non-strict**: strict validation blocks pasting a
-column of values, which is exactly what a steward does after a day in the field. A
-bad value is caught by the sync and explained in `recorded?` — guarded without being
-obstructive.
-
-No field has two writers, so there is no merge and nothing to resolve. A steward can
-be editing while a batch run identifies new photos, and neither clobbers the other.
-Push reads the human columns and writes them straight back untouched, so it can
-never blank someone's work.
-
-### One-time setup
-
-1. **Create a Google Cloud project** — <https://console.cloud.google.com/projectcreate>.
-   Any name; it exists only to hold the credential.
-2. **Enable the Sheets API** for that project —
-   <https://console.cloud.google.com/apis/library/sheets.googleapis.com> → *Enable*.
-3. **Create a service account** — *IAM & Admin → Service Accounts → Create*. No roles
-   are needed; access comes from sharing the sheet, not from project roles.
-4. **Make a JSON key** — open the service account → *Keys → Add key → Create new key
-   → JSON*. It downloads once. Store it outside the repo.
-5. **Create the sheet**, then **share it with the service account's email**
-   (`something@your-project.iam.gserviceaccount.com`) as **Editor**. This step is what
-   grants access — without it every call returns 404, which looks like a wrong id.
-6. **Add both values to `.env`:**
-
-   ```bash
-   GOOGLE_SERVICE_ACCOUNT_JSON=/Users/you/.config/sears-island/service-account.json
-   GOOGLE_SHEET_ID=<the long id from the sheet URL, between /d/ and /edit>
-   ```
-
-### Day to day
-
-```bash
-python3 scripts/plantdb.py sheet-push        # publish records for review
-python3 scripts/plantdb.py sheet-pull        # preview what stewards changed
-python3 scripts/plantdb.py sheet-pull --yes  # apply it
-```
-
-`sheet-push` creates the tab, freezes the header, adds a dropdown on STATUS, sets the
-row height so thumbnails are readable, and marks the pipeline columns
-warning-protected — they are overwritten on the next push, so an edit there is
-silently lost work.
-
-`sheet-pull` refuses anything it cannot trust and says why: an unknown status, a
-`corrected` row with no species, an unknown species id, a row for a record that does
-not exist, or — importantly — a verification with nobody's name against it. An
-unattributed verification is not a verification.
-
-### What happens when the sheet gets mangled
-
-It is a shared spreadsheet, so it will be. The pull runs unattended on a schedule,
-which raises the stakes on every one of these.
-
-| What someone does | What happens |
-|---|---|
-| Types garbage into STATUS | Refused, named in the output. Nothing written. |
-| `corrected` with no species, or a species id that doesn't exist | Refused. |
-| Fills in a verification but no name | Refused — an unattributed verification is not a verification. |
-| Edits a pipeline column (file, coordinates, the AI's answer) | Warning-protected in the sheet; overwritten on the next push. If they change `file`, the row stops matching a record and is ignored. |
-| **Deletes rows** | Those records simply aren't read. Existing verifications on them are untouched, and the next push puts the rows back. |
-| Adds a row with a made-up filename | Ignored — no such record. |
-| **Deletes, inserts or reorders a column** | **Everything stops.** See below. |
-| **Empties the STATUS column** | Blocked past two withdrawals. See below. |
-
-**A moved column is the dangerous one.** Every field is read by position — status is
-column I because that is where push put it. Shift the columns and each value is
-silently read as the field beside it: a steward's name as a species id, notes as a
-date. None of the value checks above catch it, because each value still looks
-plausible in its new place. So the header is verified before anything is believed:
-
-```
-The sheet's columns are not where the pipeline put them, so nothing can be read
-from it safely.
-     A: expected 'file', found 'file'
-  -> D: expected 'latitude', found 'longitude'
-  -> E: expected 'longitude', found 'AI identification'
-```
-
-Fix it by undoing the change (*File → Version history*), which preserves
-verifications. If the human columns are already lost, delete the `Records` tab and
-run `sheet-push` — it rebuilds from scratch, and anything not already pulled into
-`data/observations.json` is gone.
-
-**A mass withdrawal is the other one.** Select the STATUS column, press delete, and
-every field check ever recorded reads as "withdrawn" — applied on the next
-unattended pull. One or two people changing their mind is ordinary; a dozen at once
-is a mis-click, and this is the hardest data in the project to reconstruct, because
-it represents someone having walked out there. Past two, the pull stops and applies
-nothing at all:
-
-```bash
-python3 scripts/plantdb.py sheet-pull            # preview — always safe
-python3 scripts/plantdb.py sheet-pull --yes      # apply
-python3 scripts/plantdb.py sheet-pull --yes --force   # ...including >2 withdrawals
-```
-
-Underneath all of it, `data/observations.json` is in git, so any verification that
-was ever pulled is recoverable from history.
-
 ## Contributor mode: signing in on the site
 
-The sheet works for someone at a desk. It is a poor tool for a steward standing in
-front of the plant, and it cannot take a photograph at all. Contributor mode adds a
-signed-in layer to the published site for three things:
+**This replaces the Google Sheet, which has been removed.** A spreadsheet works for
+someone at a desk; it is a poor tool for a steward standing in front of the plant, it
+cannot take a photograph, and it needed a sync in both directions that could — and
+did — silently withdraw field checks. Everything it did now happens on the site,
+signed in:
 
-- **record a field check** where the plant is, instead of at a terminal or in a sheet
-- **add a photograph** straight into the find it belongs to
+- **record a field check** where the plant is, instead of at a terminal
+- **correct an identification**, without overwriting what the model said
+- **upload a whole walk** — eighty photographs at once, queued for the nightly run
+- **add photographs to a find** that already exists
 - **mark a photograph surplus** to the one that represents a find
+- **withdraw a record** from the site, reversibly, with a reason
+- **add a species** to the catalogue, so there is something to correct *to*
 
 ### The site is still static, and the survey still has one writer
 
@@ -310,7 +181,7 @@ hand; a Worker is an inbox a phone edits over HTTPS. Neither is a second writer.
 ```
 
 Everything the Worker accepts is checked **again** by `inbox-pull` before a byte
-is written, against the same `verification_problem` the sheet uses. That is not
+is written, against the same `verification_problem` the sheet used. That is not
 belt-and-braces: the Worker is deployed separately from this repository and can be
 changed without review, while the project's central claim is that `verified`
 records a real human field check. The rule about who may create one therefore
@@ -321,7 +192,7 @@ lives in the tested, version-controlled half of the system.
 A token carries a person's **name and role**, and the Worker reads both from the
 database row the token hashes to — never from anything the browser sends. So
 `verified.by` cannot be blank, cannot be someone else, and cannot be typed into a
-box. The sheet has to refuse unattributed verifications after the fact; here one
+box. The sheet had to refuse unattributed verifications after the fact; here one
 cannot be constructed.
 
 | | contributor | verifier | admin | pipeline |
@@ -379,28 +250,88 @@ Three refusals are worth knowing, because each is a decision rather than a check
 | More than 10 m apart | Beyond that these are two finds, each entitled to its own photographs. |
 | **It carries the only record of another species at that spot** | The mark is scoped to one species but drops the whole image. A plant caught behind the subject is a real record of it growing there — for an invasive, possibly the only one there will ever be. |
 
-### Photographs from the field, and where their coordinates come from
+### Managing entries on the site
 
-An uploaded photograph goes through the ordinary ingest path — same content-hash
-dedupe, same conversion, same thumbnail, same screening, same identification. It
-joins a find by *where it was taken*, which the survey already does for anything
-dropped in Drive.
+Everything the sheet used to do, plus the things it could not.
 
-The catch is that **browsers strip EXIF from uploads far more often than not** —
-the same problem `check-photos` exists for. So the page also sends the phone's own
-fix, and the pipeline uses it **only** when the photograph arrived without one:
+| Action | Who | What it does |
+|---|---|---|
+| Record a field check | verifier, admin | Writes `verified` — the project's central claim |
+| Correct the species | verifier, admin | `verified.status = corrected`, **never** an overwrite of `species_id` |
+| Fix coordinates or a date | admin | Keeps the original in `location_was` / `taken_was` |
+| Add a curator's note | admin | Sits *beside* the model's `note`, never over it |
+| Withdraw a record | admin | Reversible, needs a reason |
+| Add a species | admin | So a correction has something to point at |
 
-```json
-{ "lat": "44.4712", "lon": "-68.8834",
-  "location_source": "field-device", "location_accuracy_m": "8" }
+**The identification itself is not editable, deliberately.** `species_id`, `note`
+and `confidence` stay exactly as the pipeline wrote them however wrong they are.
+That is what lets the site show "the model said Willowherb, J. Whitten found
+Fireweed", what lets the survey report its own error rate honestly, and what makes
+`export-imap` able to name an Observer. An edit that quietly replaced the machine's
+answer would make a corrected record indistinguishable from one it got right, and
+`edit_problem` refuses it by name rather than silently ignoring it.
+
+Withdrawal is soft, attributed and reversible: the record and its original are
+kept, only the published page and image go. A reason is required, because a
+withdrawn record is invisible on the site and that string is the only account of
+why it left. `plantdb.py withheld` lists everything that is not being carried and
+why; `plantdb.py withdraw --restore` puts one back — the site can only offer that
+while a record is still published, which by definition a withdrawn one is not.
+
+### Uploading a walk
+
+The realistic contribution is not one photograph, it is eighty from a Saturday
+morning. **Upload a walk** takes them all at once, names the walk so they stay one
+thing, and queues them for the nightly Batch API run.
+
+Identification happens overnight, so the site says so rather than implying
+otherwise, and **Your uploads** shows where each walk got to:
+
+```
+Causeway, 14 August — 80 photographs
+  68 in the survey
+   9 waiting for tonight's identification run
+   3 could not be accepted
 ```
 
-`location_source` is the whole reason this is acceptable. Where the photographer
-stood when they pressed send is not the same claim as where the camera was when
-the shutter opened, and a survey that will not invent a species or a date must not
-present one as the other. It is stamped only when the substitution actually
-happened, shown on the record in the site, and if there is no location from either
-source the photograph is withheld exactly as it is today.
+### Every photograph needs its own location and date
+
+A record that cannot say *where* and *when* is not a survey record: nobody can be
+sent to check it and it cannot be compared against a later visit. So one is never
+accepted — **the upload is refused, rather than stored and quietly withheld.**
+
+The check runs twice. The browser reads each file's EXIF before anything is sent,
+so a bad photograph costs a second rather than a day; then the pipeline re-reads it
+with Pillow, which is the authoritative reader and the one that decides. Anything
+the browser cannot parse is uploaded anyway and judged there — wrongly refusing a
+good photograph is the worse error.
+
+This is `check-photos` moved to where the mistake is made. It exists because 83
+photographs once reached this survey with their EXIF stripped, invisible until
+after they had been ingested, thumbnailed and paid for.
+
+**What actually strips EXIF** is worth being precise about, because the guidance
+follows from it:
+
+| Route | Location survives? |
+|---|---|
+| Desktop, original file off the camera or card | yes |
+| iPhone → Share → Options → **Location on** → Save to Files | yes |
+| iPhone → Photos picker straight into a web page | often not |
+| **Taking a photo inside the browser** | **never** — the page has no location at the shutter |
+| Anything through a messaging app, web form or re-export | no, and unrecoverably |
+
+So the page does not offer to take a photograph, and when files are refused it says
+what to do differently instead of only what went wrong.
+
+**The one exception is attaching to a find that already exists.** Open the find and
+use *Add a photograph of this find*: those inherit that find's coordinates and need
+none of their own, because somebody is asserting on purpose that this is another
+shot of that patch. They still need their date — a new photograph of an old find is
+evidence the plant is *still there*, which is the whole value of it. The record is
+stamped `location_source: attached-to-find` with `location_from` naming the
+photograph it inherited from, so an inherited location is never mistaken for a
+measured one.
 
 ### Patchy signal
 
@@ -415,10 +346,10 @@ than saying plainly that this one needs a connection.
 
 ### Did it land?
 
-The same loop the sheet's `recorded?` column closes, for the same reason: a
-refusal that exists only in a CI log leaves the person who walked out there
-believing it was recorded. Every submission gets a receipt — `recorded`, or
-`refused` with the reason in words a contributor can act on.
+Every submission gets a receipt — `recorded`, or `refused` with the reason in words
+a contributor can act on — and the site shows them back. A refusal that exists only
+in a CI log leaves the person who walked out there believing it was recorded, which
+is the failure this closes.
 
 The site is honest about timing, too. A submission is queued, not applied, so it
 says so rather than claiming a change the reader can see has not happened:
@@ -496,9 +427,9 @@ python3 scripts/plantdb.py inbox-pull          # preview — always safe
 python3 scripts/plantdb.py inbox-pull --yes    # apply
 ```
 
-Like `sheet-pull`, it previews by default and stops rather than applying more than
-two withdrawals at once. A field app makes withdrawing one tap, so if anything
-that guard matters more here.
+It previews by default and stops rather than applying more than two withdrawals at
+once — withdrawals are the hardest data here to reconstruct, since each represents
+somebody having walked out there, and on a phone withdrawing is a single tap.
 
 Everything contributor mode does is also available without it, because a
 capability that exists only behind a deployed Worker is how a project ends up
@@ -510,21 +441,25 @@ python3 scripts/plantdb.py redundant --file IMG_1235.jpg --of IMG_1234.jpg --by 
 python3 scripts/plantdb.py redundant --file IMG_1235.jpg --unmark
 ```
 
-### Where a verification came from, and one bug this fixed
+### Why the sheet is gone
 
-Verifications now record `via` — `sheet`, `cli` or `site`.
+Partly because the site does its job better. But also because of what building this
+turned up.
 
-This was not bookkeeping. `sheet-push` writes the sheet's own human columns back,
-so a verification made anywhere else never appeared in the STATUS column — and
-`sheet-pull` reads a blank STATUS against a stored verification as *withdraw it*.
-Every `plantdb.py confirm` on a record that was in the sheet was therefore
-retracted by the next unattended pull, usually within two hours, silently. The
-field app would have multiplied it.
+`sheet-push` wrote the sheet's own human columns back, so a verification recorded
+any other way never appeared in the STATUS column — and `sheet-pull` read a blank
+STATUS against a stored verification as *withdraw it*. Every `plantdb.py confirm`
+on a record that was in the sheet was therefore retracted by the next unattended
+pull, silently, usually within two hours. Nothing was actually lost, because no
+verification had been recorded yet — but that is luck, not design.
 
-Two changes: a blank cell now only withdraws a verification that came from the
-sheet, and `sheet-push` mirrors verifications made elsewhere *into* the sheet's
-blank cells, so a steward sees every field check that exists rather than only the
-ones typed there. A steward's own entry is never overwritten.
+The shape of the bug is the argument. A two-way sync between a spreadsheet and a
+survey has to reconcile "blank" against "absent" on every field, forever, and the
+cost of getting it wrong falls on the hardest data here to reconstruct. A one-way
+inbox has no such question: a submission either exists or it does not.
+
+Verifications still record `via` (`cli` or `site`), which is what a blank-cell
+withdrawal could never distinguish.
 
 ## Screening
 
@@ -731,7 +666,7 @@ half price and batch results come back over hours, not seconds:
 
 | | When | What |
 |---|---|---|
-| **submit** | 07:23 UTC daily (≈2:23am ET) | pull steward verifications, ingest new photos from Drive, submit a batch, walk away |
+| **submit** | 07:23 UTC daily (≈2:23am ET) | collect contributor submissions, ingest new photos from Drive, submit a batch, walk away |
 | **collect** | :53 on even hours | apply any batch that has finished, reconcile, publish, deploy |
 
 The Batch API discount is a **flat 50%, not time-of-day pricing** — running at 2am
@@ -759,7 +694,6 @@ variables → Actions*:
 | `ANTHROPIC_API_KEY` | same key as `.env` |
 | `GOOGLE_SERVICE_ACCOUNT_JSON` | the **contents** of the JSON key file, not a path |
 | `GOOGLE_DRIVE_FOLDER_ID` | the shared inbox folder |
-| `GOOGLE_SHEET_ID` | the steward review sheet |
 | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET` | as in `.env` |
 | `SIF_WORKER_URL`, `SIF_PIPELINE_TOKEN` | optional — [contributor mode](#contributor-mode-signing-in-on-the-site). The token is scoped to the `pipeline` role, which may collect the inbox and nothing else. |
 
@@ -929,6 +863,8 @@ python3 scripts/plantdb.py export-imap  # field-verified invasives, as an iMapIn
 python3 scripts/plantdb.py inbox-pull   # apply what contributors submitted through the site
 python3 scripts/plantdb.py contributor add --name "…" --role verifier
 python3 scripts/plantdb.py redundant --file A.jpg --of B.jpg --by "…"  # mark a frame surplus
+python3 scripts/plantdb.py withdraw --file A.jpg --by "…" --reason "…"  # take it off the site
+python3 scripts/plantdb.py withheld    # everything not carried on the site, and why
 python3 scripts/plantdb.py reconcile    # merge duplicate species, drop non-answers
 python3 scripts/plantdb.py verify       # data-quality check
 python3 scripts/plantdb.py publish      # build public/
@@ -988,7 +924,7 @@ it: the map, the photo grid, the map popup, the species sheet, the steward sheet
 `unverified`, `invasives` and `export-imap`.
 
 A patch photographed seven times is one thing growing in one place. Seven rows in a
-steward's sheet is seven walks to verify one shrub; seven lines in a survey report
+reviewer's list is seven walks to verify one shrub; seven lines in a survey report
 overstates what is on the ground; seven records to the state reports seven
 infestations.
 

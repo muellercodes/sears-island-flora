@@ -8,7 +8,7 @@
 # hash and skipped, so the same folder can be pointed at repeatedly.
 #
 # Note this does NOT exit early when no photos arrive. Steward verifications land
-# in the sheet independently of new photos, and someone who spends a quiet Tuesday
+# through the site independently of new photos, and someone who spends a quiet Tuesday
 # confirming records should not have that work sit unpublished until the next
 # photo happens to show up.
 
@@ -23,7 +23,7 @@ say() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG"; }
 PY="$ROOT/.venv/bin/python"
 [ -x "$PY" ] || PY=python3
 
-# Credentials up front: the sheet sync needs GOOGLE_*, not just ANTHROPIC_API_KEY,
+# Credentials up front: Drive ingest needs GOOGLE_*, not just ANTHROPIC_API_KEY,
 # and the ingest source below is chosen on whether Drive is configured.
 if [ -f "$ROOT/.env" ]; then set -a; . "$ROOT/.env"; set +a; fi
 
@@ -47,13 +47,14 @@ fi
 
 say "checking ${INBOX:-the shared Drive folder}"
 
-# 1. Take in whatever the stewards verified since last time. Optional — a project
-#    without a sheet configured just skips it.
-if [ -n "${GOOGLE_SHEET_ID:-}" ] && [ -n "${GOOGLE_SERVICE_ACCOUNT_JSON:-}" ]; then
-  if $PY scripts/plantdb.py sheet-pull --yes >>"$LOG" 2>&1; then
-    say "pulled steward verifications"
+# 1. Take in whatever contributors submitted through the site since last time —
+#    field checks, corrections, withdrawals, surplus marks and photographs.
+#    Optional: a project without contributor mode configured just skips it.
+if [ -n "${SIF_WORKER_URL:-}" ] && [ -n "${SIF_PIPELINE_TOKEN:-}" ]; then
+  if $PY scripts/plantdb.py inbox-pull --yes; then
+    say "collected contributor submissions"
   else
-    say "WARNING: sheet-pull failed (see log) — continuing with local data"
+    say "contributor inbox unreachable — carrying on"
   fi
 fi
 
@@ -131,14 +132,4 @@ if [ -n "$(git status --porcelain)" ]; then
   fi
 else
   say "nothing to commit"
-fi
-
-# 5. Put new and changed records in front of the stewards. Last, so the sheet
-#    reflects what is actually published rather than what we hoped to publish.
-if [ -n "${GOOGLE_SHEET_ID:-}" ] && [ -n "${GOOGLE_SERVICE_ACCOUNT_JSON:-}" ]; then
-  if $PY scripts/plantdb.py sheet-push >>"$LOG" 2>&1; then
-    say "sheet updated for review"
-  else
-    say "WARNING: sheet-push failed (see log)"
-  fi
 fi

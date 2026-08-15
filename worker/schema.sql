@@ -38,7 +38,8 @@ CREATE INDEX IF NOT EXISTS contributors_token ON contributors (token_sha256);
 -- token does not un-walk the walk.
 CREATE TABLE IF NOT EXISTS submissions (
   id        TEXT PRIMARY KEY,
-  kind      TEXT NOT NULL CHECK (kind IN ('verify','redundant','upload')),
+  kind      TEXT NOT NULL CHECK (kind IN ('verify','redundant','upload',
+                                          'edit','withdraw','restore','species')),
   by_id     TEXT NOT NULL,
   by_name   TEXT NOT NULL,
   role      TEXT NOT NULL,

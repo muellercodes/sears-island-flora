@@ -13,7 +13,6 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import identify  # noqa: E402,F401
 import plantdb  # noqa: E402,F401
-import sheets  # noqa: E402,F401
 
 
 def species(id, common, scientific, **kw):

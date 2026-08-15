@@ -154,6 +154,34 @@ async function handle(request, env) {
     }, 200);
   }
 
+  // --- The walks I have uploaded, and what became of them --------------------
+  // Identification runs on the nightly Batch API submission, so a contributor who
+  // uploads 80 photographs on a Saturday afternoon sees nothing on the site until
+  // the next day. Without somewhere to look, that is indistinguishable from
+  // having lost them.
+  if (path === "/api/walks" && request.method === "GET") {
+    const { results } = await env.DB.prepare(
+      `SELECT payload, status, detail, submitted FROM submissions
+       WHERE by_id = ? AND kind = 'upload' ORDER BY submitted DESC LIMIT 1000`,
+    ).bind(who.id).all();
+    const walks = new Map();
+    for (const r of results || []) {
+      const p = JSON.parse(r.payload);
+      const key = p.walk || r.submitted.slice(0, 10);
+      if (!walks.has(key)) {
+        walks.set(key, { walk: key, submitted: r.submitted, queued: 0,
+                         recorded: 0, refused: 0, refusals: [] });
+      }
+      const w = walks.get(key);
+      w[r.status === "pending" ? "queued" : r.status] += 1;
+      if (r.status === "refused" && w.refusals.length < 25) {
+        w.refusals.push({ file: p.filename, why: r.detail });
+      }
+      if (r.submitted < w.submitted) w.submitted = r.submitted;
+    }
+    return json({ walks: [...walks.values()] }, 200);
+  }
+
   // --- Record a field check -------------------------------------------------
   if (path === "/api/verify" && request.method === "POST") {
     if (!may(who.role, "verify")) {
@@ -177,6 +205,34 @@ async function handle(request, env) {
       notes: body.notes ? String(body.notes).slice(0, 2000) : "",
       date: body.date ? String(body.date).slice(0, 10) : "",
     }, false);
+    return json({ id, queued: true }, 202);
+  }
+
+  // --- Curation: edit, withdraw, restore, add a catalogue entry -------------
+  // All four sit behind the `redundant` (admin) grant rather than each inventing
+  // its own. The pipeline decides what any of them may actually change — notably
+  // that an edit can never overwrite the machine's own identification.
+  const CURATION = { "/api/edit": "edit", "/api/withdraw": "withdraw",
+                     "/api/restore": "restore", "/api/species": "species" };
+  if (CURATION[path] && request.method === "POST") {
+    if (!may(who.role, "redundant")) {
+      return json({ error: `a ${who.role} cannot curate entries` }, 403);
+    }
+    const body = await request.json().catch(() => null);
+    const kind = CURATION[path];
+    if (kind !== "species" && !body?.file) return json({ error: "which record?" }, 400);
+    if (kind === "withdraw" && !(body?.reason || "").trim()) {
+      return json({ error: "a withdrawal needs a reason — it is the only record "
+                         + "of why this left the survey" }, 400);
+    }
+    if (kind === "species" && !(body?.species_id || "").trim()) {
+      return json({ error: "a catalogue entry needs an id" }, 400);
+    }
+    if (await overRate(env, who)) return json({ error: "too many submissions this hour" }, 429);
+    const payload = { ...body };
+    delete payload.by;             // never client-supplied; see identify()
+    delete payload.role;
+    const id = await queue(env, who, kind, payload, false);
     return json({ id, queued: true }, 202);
   }
 
@@ -237,18 +293,21 @@ async function handle(request, env) {
        VALUES (?, 'upload', ?, ?, ?, ?, 1, datetime('now'), 'pending')`,
     ).bind(id, who.id, who.name, who.role, JSON.stringify({
       filename: String(form.get("filename") || `${id}.jpg`).replace(/[^A-Za-z0-9._-]/g, "_"),
-      // The phone's own fix, sent because browsers strip EXIF from uploads far
-      // more often than not. The pipeline uses it ONLY if the photograph arrived
-      // without its own, and stamps location_source on the record when it does —
-      // where the photographer stood when they pressed send is a different claim
-      // from where the camera was when the shutter opened, and the survey says so
-      // rather than smoothing the two together.
-      lat: String(form.get("lat") || ""),
-      lon: String(form.get("lon") || ""),
-      accuracy_m: String(form.get("accuracy_m") || ""),
-      taken: String(form.get("taken") || ""),
+      // No coordinates are sent from the browser, deliberately. The pipeline
+      // reads EXIF with Pillow, which is the authoritative reader, and a
+      // photograph that has none is refused rather than given a location from
+      // somewhere else. The page's own EXIF check is a courtesy that saves an
+      // upload; it is not what decides.
+      //
+      // The single exception is `attach_to`: a photograph explicitly added to a
+      // find that already exists inherits THAT find's coordinates, because the
+      // person uploading it is saying this is another photograph of that patch.
+      // The pipeline takes them from the stored record, never from here.
+      attach_to: String(form.get("attach_to") || ""),
+      // Which walk this came from, so 80 photographs from one morning stay one
+      // thing a contributor can look at the state of.
+      walk: String(form.get("walk") || "").slice(0, 120),
       note: String(form.get("note") || "").slice(0, 2000),
-      batch: "field-app",
     })).run();
     return json({ id, queued: true }, 202);
   }

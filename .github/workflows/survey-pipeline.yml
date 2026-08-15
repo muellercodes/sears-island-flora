@@ -98,27 +98,19 @@ jobs:
           printf '%s' "$SA_JSON" > "$RUNNER_TEMP/service-account.json"
           echo "GOOGLE_SERVICE_ACCOUNT_JSON=$RUNNER_TEMP/service-account.json" >> "$GITHUB_ENV"
 
-      # Every tick, in both modes. Steward verifications arrive independently of
-      # new photos, and someone who spends a quiet Tuesday confirming records
-      # should not have that work sit unpublished until a photo happens to show
-      # up. A failure here is a warning, not a reason to drop the rest of the run.
-      - name: Take in steward verifications
-        continue-on-error: true
-        env:
-          GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
-        run: python3 scripts/plantdb.py sheet-pull --yes
-
-      # The other human channel, drained on the same tick and for the same reason:
-      # a steward who spends an afternoon confirming records on their phone should
-      # not have that work sit unpublished until a photograph happens to arrive.
+      # The only human channel into the survey, since the steward sheet was
+      # retired. Field checks, corrections, withdrawals, surplus marks and
+      # photographs all arrive here. It runs on every tick in both modes: a
+      # steward who spends a quiet Tuesday confirming records should not have that
+      # work sit unpublished until a photograph happens to show up.
       #
-      # The token here is scoped to the `pipeline` role, which may collect the
-      # inbox and nothing else — it cannot record a field check, mark a photograph
-      # surplus or upload. Nothing that runs unattended can manufacture the one
-      # claim this survey asks anyone to believe.
+      # The token is scoped to the `pipeline` role, which may collect the inbox and
+      # nothing else — it cannot record a field check, mark a photograph surplus or
+      # upload. Nothing that runs unattended can manufacture the one claim this
+      # survey asks anyone to believe.
       #
-      # Also a warning rather than a failure: identifications further down this
-      # job are already paid for, and a Worker that is down must not cost them.
+      # A warning rather than a failure: identifications further down this job are
+      # already paid for, and a Worker that is down must not cost them.
       - name: Take in contributor submissions
         continue-on-error: true
         env:
@@ -243,13 +235,3 @@ jobs:
         uses: actions/deploy-pages@v4
         if: steps.changed.outputs.yes == 'true'
 
-      # Last, so the sheet reflects what is actually published rather than what
-      # this run hoped to publish. Without this the bridge is one-way: the pipeline
-      # would read steward verifications forever and never put a new record in
-      # front of anyone to verify.
-      - name: Put new records in front of the stewards
-        if: steps.changed.outputs.yes == 'true'
-        continue-on-error: true
-        env:
-          GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
-        run: python3 scripts/plantdb.py sheet-push
