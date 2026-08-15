@@ -262,6 +262,14 @@
   "ash-sapling": {
    "status": "native",
    "note": "Native and under threat — emerald ash borer is in Maine. Ash locations are worth recording for monitoring."
+  },
+  "knotweed-possible-unconfirmed": {
+   "status": "regulated",
+   "note": "UNCONFIRMED. Reynoutria japonica is on Maine's Do Not Sell list and is the headline invasive for this island. Flagged regulated on the precautionary rule, not because the identification is settled — confirm on hollow, purple-speckled stems and leaves cut straight across the base, then correct the entry if it is something else."
+  },
+  "reed-canary-grass-probable": {
+   "status": "regulated",
+   "note": "UNCONFIRMED. Phalaris arundinacea was added to Maine's Do Not Sell list effective 1/1/2024. Flagged regulated on the precautionary rule. Confirm on the membranous ligule and the narrow, spike-like panicle that opens briefly at flowering; native manna grasses have a blunter ligule."
   }
  }
 }
