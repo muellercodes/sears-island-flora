@@ -43,6 +43,11 @@ MUTATIONS = [
      "out[k] = (out[k] || 0) + 1;",
      "out[k] = 1;"),
 
+    ("app/survey.js",
+     "a photograph is counted once per plant in it",
+     "units.forEach((u) => u.items.forEach((o) => files.add(o.file)));",
+     "units.forEach((u) => u.items.forEach((o, i) => files.add(o.file + i + Math.random())));"),
+
     ("index.html",
      "'Full details' opens the photograph's subject, not the find",
      '<button data-id="${esc(s.id)}" onclick="openSheet(this.dataset.id)">Full details</button>',

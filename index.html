@@ -294,7 +294,6 @@
     color:var(--accent); border-radius:7px; padding:6px; font:inherit; font-size:12px;
     font-weight:600; cursor:pointer; }
   .pop .pb button:hover { border-color:var(--accent); }
-  .map-note { color:var(--muted); font-size:12.5px; margin:10px 2px 0; }
 
   .vtag { display:inline-flex; align-items:center; gap:4px; font-size:10.5px; font-weight:700;
     letter-spacing:.03em; text-transform:uppercase; padding:2px 7px; border-radius:999px;
@@ -444,6 +443,10 @@
 <main class="wrap">
   <div id="notice"></div>
 
+
+  <p class="count" id="count" title="A find is one species growing in one place. One species can be several finds — goldenrod grows in four separate spots here — and one find can rest on several photographs of the same patch."></p>
+  <div id="view"></div>
+
   <details class="safety" id="safety">
     <summary><span class="ico">🔬</span><b>AI-generated identifications, not verified in the field unless marked <span class="vtag v-ok">✓ Field-verified</span></b></summary>
     <p>Treat every record as a lead to go and check, not a finding. Records a person has
@@ -459,9 +462,6 @@
        <a href="https://www.maine.gov/dacf/php/horticulture/invasiveplants.shtml">Maine DACF list</a>
        before being reported to anyone.</p>
   </details>
-
-  <p class="count" id="count" title="A find is one species growing in one place. One species can be several finds — goldenrod grows in four separate spots here — and one find can rest on several photographs of the same patch."></p>
-  <div id="view"></div>
 
   <footer><p id="updated"></p></footer>
 
@@ -534,6 +534,7 @@ let mode = "map", query = "", active = new Set();
 // found by an "Invasive" filter opened captioned with its photograph's
 // subject, which is how the survey's only invasive appeared as St John's Wort.
 let SHOWN_FOR = null;
+let SPAN = "";        // the survey's date range, shown beside the stats
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 // The build writes an explicit thumb path, because local-only records live in a
@@ -652,7 +653,8 @@ function render() {
 
   if (mode === "species") {
     $("count").textContent = `${list.length} species · ${
-      list.reduce((n, s) => n + (byS[s.id] || []).length, 0)} photographs`;
+      list.reduce((n, s) => n + (byS[s.id] || []).length, 0)} photographs`
+      + (SPAN ? ` · ${SPAN}` : "");
     // (no location count here — this view is the catalogue, one card per species)
     $("view").innerHTML = list.length ? `<div class="grid">${list.map(cardHTML).join("")}</div>`
       : `<p class="empty">Nothing matches that.</p>`;
@@ -686,12 +688,14 @@ function render() {
   };
 
   if (mode === "map") {
-    const adrift = units.length - located.length;
-    $("count").textContent = tally(located)
-      + (adrift ? ` · ${adrift} more with no coordinates` : "");
-    renderMap(located, adrift);
+    // Records with no coordinates are not mentioned. They cannot be shown, cannot
+    // be visited, and are not something a reader can act on — naming them twice
+    // on one screen only invited the question "where are those, then?", which the
+    // page has no answer to. `withheld` at a terminal is where that belongs.
+    $("count").textContent = tally(located) + (SPAN ? ` · ${SPAN}` : "");
+    renderMap(located);
   } else {
-    $("count").textContent = tally(units);
+    $("count").textContent = tally(units) + (SPAN ? ` · ${SPAN}` : "");
     $("view").innerHTML = units.length
       ? `<div class="photo-grid">${units.map(u =>
           photoHTML(u.anchor, u.items.length, u.species_id)).join("")}</div>`
@@ -780,18 +784,14 @@ const nextFrame = () => new Promise(r => {
 });
 let mapRO = null, fitted = false;
 
-function renderMap(located, unlocated) {
+function renderMap(located) {
   mapped = located;              // FINDS, not photographs — see render()
   // `!map` as well as `!$("map")`: the empty state above leaves the div in place
   // with a message in it, so its mere presence no longer means a live map.
   if (!$("map") || !map) {
-    $("view").innerHTML = `<div id="map"></div><p class="map-note" id="map-note"></p>`;
+    $("view").innerHTML = `<div id="map"></div>`;
     map = markers = null;
   }
-  $("map-note").textContent = unlocated
-    ? `${unlocated} record${unlocated === 1 ? " has" : "s have"} no coordinates and can't be mapped.`
-    : "";
-
   if (!located.length) {
     // Tear the map DOWN, do not just paint over it. Overwriting #map's innerHTML
     // while `map` still holds a live Leaflet instance bound to that element left
@@ -835,14 +835,35 @@ function renderMap(located, unlocated) {
       map.on("popupclose", () => { openPopup = null; });
     }
     fitted = false;
-    map.invalidateSize();
-    fitMap();
-    drawMarkers();
+    settleMap();
     watchMapSize();
   }).catch(() => {
     $("map").innerHTML = `<p class="empty">The map couldn't load — check your connection.<br>`
       + `The Species and Photos views work offline.</p>`;
   });
+}
+
+// Measure, fit and draw — retrying until the container actually has a width.
+//
+// Leaflet caches the size it measured at init. If it measures a container the
+// browser has not laid out yet it caches 0, `fitBounds` refuses to run against a
+// zero box, and the map sits there forever: alive, attributed, and completely
+// empty. That is exactly what a backgrounded tab produces, and it is what the
+// timeout in `nextFrame` above let happen — that timeout stops the chain hanging,
+// but it means the chain can arrive early, so arriving early has to be survivable.
+//
+// A ResizeObserver alone was not enough: it never fires when the element's box is
+// computed lazily and never observably "changes". So this retries on its own,
+// briefly, and stops the moment it gets a real measurement.
+function settleMap(attempt = 0) {
+  if (!map || !$("map")) return;
+  map.invalidateSize();
+  if (map.getSize().x) {
+    fitMap();
+    drawMarkers();
+    return;
+  }
+  if (attempt < 12) setTimeout(() => settleMap(attempt + 1), 100 + attempt * 50);
 }
 
 function fitMap() {
@@ -860,7 +881,7 @@ function watchMapSize() {
   mapRO = new ResizeObserver(() => {
     if (!map || !$("map")) return;
     map.invalidateSize();
-    if (!fitted) { fitMap(); drawMarkers(); }
+    if (!fitted) settleMap();
   });
   mapRO.observe(el);
 }
@@ -1816,9 +1837,13 @@ $("lightbox").onclick = () => $("lightbox").close();
 (function () {
   const dates = OBS.map(o => (o.taken || "").slice(0, 10)).filter(Boolean).sort();
   const batches = [...new Set(OBS.map(o => o.batch).filter(Boolean))];
-  $("hdr-sub").textContent = `${OBS.length} photos`
-    + (batches.length === 1 ? ` · ${batches[0]}`
-       : dates.length ? ` · ${dates[0]}${dates.at(-1) !== dates[0] ? "–" + dates.at(-1) : ""}` : "");
+  // The header states no counts. It used to say "68 photos" while the line above
+  // the map said "96 photographs" — two numbers for one thing, in view at once,
+  // with nothing to say which was right. The stats line is now the only place
+  // anything is counted, and the span of the survey rides along with it.
+  SPAN = batches.length === 1 ? batches[0]
+    : dates.length ? `${dates[0]}${dates.at(-1) !== dates[0] ? "–" + dates.at(-1) : ""}` : "";
+  $("hdr-sub").textContent = "";
   // Shown only while the published set is stand-in data. Removing `notice` from
   // data/publish-config.json is what retires it — same scrub as the records.
   const nt = DB.notice;
@@ -1838,7 +1863,8 @@ $("lightbox").onclick = () => $("lightbox").close();
     ids.length ? `Last updated ${ids.at(-1)}` : (built ? `Last updated ${built}` : ""),
     span, `${OBS.length} record${OBS.length === 1 ? "" : "s"}`,
   ].filter(Boolean).join(" · ");
-  openWide($("safety"));
+  // The banner stays closed until somebody opens it. It is a standing caveat, not
+  // news, and it now sits below the map where it costs nothing shut.
   render();
   // Last, and never awaited: a reader with no token, no endpoint configured or no
   // network gets exactly the page they got before any of this existed.
