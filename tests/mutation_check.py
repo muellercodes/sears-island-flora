@@ -20,13 +20,18 @@ import subprocess
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
+# Discovered, not listed: a suite added later has to be run by this too, and the
+# way that gets forgotten is a hard-coded filename.
+SUITES = [str(p.relative_to(ROOT)) for p in sorted((ROOT / "tests").glob("*.test.mjs"))]
 
 # (file, what the bug was, the correct code, the broken code)
 MUTATIONS = [
     ("app/survey.js",
-     "a background-only species is invisible to its own filter",
-     "return Survey.speciesIn(o).find((s) => ok.has(s)) || Survey.spOf(o);",
-     "return Survey.spOf(o);"),
+     # Was `shownAs` returning the subject; that function has been retired and
+     # the rule now lives on the find itself, so the bug is reintroduced there.
+     "a find is labelled with its photograph's subject, not what it is a find of",
+     "seen.set(k, { anchor: o, items: [o], occ: x, species_id: sid });",
+     "seen.set(k, { anchor: o, items: [o], occ: x, species_id: Survey.spOf(o) });"),
 
     ("app/survey.js",
      "a filter matches only a photograph's subject",
@@ -67,6 +72,45 @@ MUTATIONS = [
      "a backtick in an HTML comment silently breaks the whole page",
      "<script>\nconst DB = window.PLANT_DB",
      "<script>\n// <!-- a `backtick` in a comment -->\nconst DB = window.PLANT_DB"),
+
+    ("index.html",
+     "every find in a merged pin opens the same record",
+     # The original: rows addressed by their photograph, so every find resting on
+     # one frame — three species in one shot — shared the first one's address.
+     "onclick=\"event.stopPropagation();pinShow('${gid}',${i})\"",
+     "onclick=\"event.stopPropagation();pinShow('${gid}',"
+     "${units.findIndex(x => x.anchor === u.anchor)})\""),
+
+    ("index.html",
+     "a popup names the photograph's subject rather than the find",
+     "const o = u.anchor, s = SP[u.species_id] || SP.unknown, n = u.items.length;\n  const finds",
+     "const o = u.anchor, s = SP[spOf(u.anchor)] || SP.unknown, n = u.items.length;\n  const finds"),
+
+    ("index.html",
+     "a pin flattens its finds back into loose photographs",
+     "    if (g) g.units.push(u);\n    else groups.push({ p, units: [u] });",
+     "    if (g) g.units.push(...u.items.map(x => ({ ...u, items: [x] })));\n"
+     "    else groups.push({ p, units: u.items.map(x => ({ ...u, items: [x] })) });"),
+
+    ("index.html",
+     "a popup counts one photograph once per plant in it",
+     "photos = Survey.tally(units).photographs",
+     "photos = units.reduce((t, u) => t + u.items.length, 0)"),
+
+    ("index.html",
+     "a map built before layout can never re-measure its container",
+     "      map.setView(llOf(located[0].anchor), 16);\n",
+     ""),
+
+    ("index.html",
+     "the map paints over the page instead of staying inside its own box",
+     "position:relative; isolation:isolate; z-index:0; }",
+     "}"),
+
+    ("index.html",
+     "a pinned header and a full-height map claim the same screen",
+     "  header { background:var(--bg);",
+     "  header { position:sticky; top:0; z-index:20; background:var(--bg);"),
 ]
 
 
@@ -85,7 +129,9 @@ def main():
                 continue
             path.write_text(text.replace(good, bad, 1))
             try:
-                r = subprocess.run(["node", "--test", "tests/app.test.mjs"],
+                # Every site suite, not one file: page.test.mjs drives the page
+                # itself and is the only thing that sees a wrong record open.
+                r = subprocess.run(["node", "--test", *sorted(SUITES)],
                                    cwd=ROOT, capture_output=True, text=True)
                 caught = r.returncode != 0
             finally:

@@ -33,8 +33,16 @@
   .wrap { max-width:1180px; margin:0 auto; padding:0 20px; }
   main.wrap { padding-bottom:80px; }
 
-  header { position:sticky; top:0; z-index:20; background:var(--bg);
-           border-bottom:1px solid var(--line); padding:18px 0 12px; }
+  /* Deliberately NOT sticky. The page scrolls as one piece, top to bottom, and
+     nothing is ever laid over anything else. A sticky header meant the map and
+     the header each claimed the same strip of screen, and the map won: Leaflet's
+     panes are z-index 400-700 against the header's 20 (see #map below for why
+     that comparison was ever possible), so scrolling slid tiles, markers and an
+     open popup straight over the title and the filters. The stacking is fixed
+     below as well, because the map must not be able to cover anything — but the
+     overlap only existed because the header was pinned in the first place. */
+  header { background:var(--bg); border-bottom:1px solid var(--line);
+           padding:18px 0 12px; }
   .title { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; }
   h1 { font-size:21px; margin:0; letter-spacing:-.01em; }
   .sub { color:var(--muted); font-size:13px; }
@@ -215,10 +223,19 @@
 
   /* ---- map ---- */
   /* Tall enough to be worth panning on a phone, capped so the page still scrolls. */
+  /* `isolation` is the load-bearing property, not decoration. Leaflet positions
+     its panes at z-index 200-700 INSIDE this element, and Leaflet's own
+     .leaflet-container rule is `position:relative` with no z-index — which is not
+     a stacking context, so those panes were competing with the rest of the page
+     directly and outranking everything on it. Isolating the map keeps that whole
+     numbering scheme inside these four borders, where it belongs: the map can be
+     stacked as one box against the page, and can no longer paint over any part of
+     it. z-index:0 says the same thing to anything that predates `isolation`. */
   #map { height:min(72vh,680px); border-radius:13px; border:1px solid var(--line);
-         background:var(--panel); box-shadow:var(--shadow); }
-  /* Fill what's left below the sticky header rather than a fixed fraction, so the
-     map is usable without scrolling. dvh accounts for mobile browser chrome. */
+         background:var(--panel); box-shadow:var(--shadow);
+         position:relative; isolation:isolate; z-index:0; }
+  /* Fill what's left below the header rather than a fixed fraction, so the map is
+     usable without scrolling. dvh accounts for mobile browser chrome. */
   @media (max-width:620px){
     #map { height:max(340px, calc(100dvh - 250px)); border-radius:11px; }
     /* Reclaim vertical space so the map isn't pushed under the fold: the status
@@ -491,13 +508,19 @@ const OCC = {};
 // because one photograph can evidence several species — its subject plus anything
 // identified behind it — and belongs to a different patch of each.
 const OCC_OF = Survey.indexOccurrences(DB.occurrences);
-const occOf = o => OCC_OF[`${spOf(o)}|${o.file}`] || null;
 
-// All four of these are app/survey.js, not copies of it. They are the rules that
-// decide which species a photograph counts towards and how photographs collapse
-// into finds — every user-visible bug this project has shipped has been in one of
-// them — so they live in one tested file and the page borrows them.
-const shownAs = (o, ok) => Survey.shownAs(o, ok);
+// app/survey.js, not a copy of it. These are the rules that decide which species
+// a photograph counts towards and how photographs collapse into finds — every
+// user-visible bug this project has shipped has been in one of them — so they
+// live in one tested file and the page borrows them.
+//
+// There is no page-level "which species is this photograph being shown for" any
+// more, and its absence is the point. That question only has an answer while a
+// filter is running; with none, all it can say is the subject. The map asked it
+// about a pin holding three finds and got the subject three times, which is how
+// every row of that pin opened St John's Wort. `byOccurrence` labels each find
+// with the species it is a find OF, and everything downstream reads that instead
+// of inferring it again.
 const byOccurrence = (records, ok) => Survey.byOccurrence(records, ok, OCC_OF);
 const byS = {};       // photos where this species is the main subject
 const alsoS = {};     // photos where it's visible but not the subject — still a real record of it growing there
@@ -507,14 +530,11 @@ OBS.forEach(o => {
   (o.also || []).forEach(id => (alsoS[id] ||= []).push(o));
 });
 
-const EDI = {
-  edible:            {label:"Edible",          cls:"b-edible",   chip:"c-edible"},
-  "edible-with-caution":{label:"Edible · caution", cls:"b-caution", chip:"c-caution"},
-  "medicinal-only":  {label:"Medicinal / use", cls:"b-medicinal",chip:"c-med"},
-  inedible:          {label:"Not edible",      cls:"b-inedible", chip:"c-inedible"},
-  toxic:             {label:"Toxic",           cls:"b-toxic",    chip:"c-toxic"},
-  unknown:           {label:"Unidentified",    cls:"b-unknown",  chip:"c-unknown"},
-};
+// Badge and chip styling per regulatory status. There was a second table beside
+// this one keying the same styles off edibility, left over from when the site was
+// a foraging guide; nothing had read it since the survey started leading with
+// what a plant IS rather than whether you can eat it. `s.edibility` is still
+// searchable and still shown in the species sheet's own words.
 const STATUS = {
   regulated:   {label:"Regulated",  cls:"b-toxic",    chip:"c-toxic"},
   invasive:    {label:"Invasive",   cls:"b-caution",  chip:"c-caution"},
@@ -528,12 +548,14 @@ const badgeOf = s => STATUS[statusOf(s)];
 const isAuto = s => typeof s.source === "string" && s.source.startsWith("auto");
 
 let mode = "map", query = "", active = new Set();
-// The species set the current view is showing FOR. The popups are built long
-// after render() returns — on click, and again on every zoom — so they cannot
-// be passed the filter and have to read it from somewhere. Without it a pin
-// found by an "Invasive" filter opened captioned with its photograph's
-// subject, which is how the survey's only invasive appeared as St John's Wort.
-let SHOWN_FOR = null;
+// There is deliberately no global here holding "the filter the popups should
+// read". There was one, because popups are built long after render() returns —
+// on click, and again on every zoom — and something had to tell them which
+// species the view was showing for. It was the wrong answer to the right
+// problem: a popup that works out what it is showing can work it out
+// differently from the map underneath it, and did. render() now hands the map
+// the finds themselves and the popups read that list, so there is nothing left
+// for them to get wrong.
 let SPAN = "";        // the survey's date range, shown beside the stats
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -638,7 +660,6 @@ function render() {
     .sort((a, b) => ORDER.indexOf(statusOf(a)) - ORDER.indexOf(statusOf(b)) || a.common.localeCompare(b.common));
 
   const ok = new Set(list.map(s => s.id));
-  SHOWN_FOR = ok;
   // Every photograph evidencing a matching species — as its subject OR caught in
   // the background. Filtering on the subject alone made an "Invasive" filter show
   // nothing at all, because this survey's only invasive is smooth-bedstraw and it
@@ -817,6 +838,17 @@ function renderMap(located) {
         scrollWheelZoom: true, touchZoom: true, doubleClickZoom: true,
         boxZoom: true, wheelPxPerZoomLevel: 90, zoomSnap: 0.25, zoomDelta: 0.5,
       });
+      // A view straight away, before anything else touches the map, and long
+      // before fitMap has a size worth fitting to. Leaflet's invalidateSize()
+      // returns early on a map that has never had a view, so a map built against
+      // a container the browser has not laid out — a backgrounded tab, or the
+      // 250ms escape hatch in nextFrame firing before layout — cached a width of
+      // zero and had no way back: settleMap re-measured nothing, the
+      // ResizeObserver below called invalidateSize and was ignored, and the map
+      // sat there blank and alive with every record still in it. The safety nets
+      // were all in place; none of them could fire. fitMap replaces this view the
+      // moment there is a real size, so the coordinates only have to be sane.
+      map.setView(llOf(located[0].anchor), 16);
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         maxZoom: 19,
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
@@ -902,29 +934,40 @@ function drawMarkers() {
   // Two levels, and the order matters. An occurrence is one find at ANY zoom, so it
   // is collapsed before the pixel test — otherwise seven photographs two metres
   // apart split back into seven pins as soon as you zoom in far enough.
+  //
+  // A group KEEPS THE FINDS it merged. It used to flatten them back into loose
+  // photographs and leave the popup to work the finds out again, and the popup
+  // got a different answer both times it tried: one frame evidencing three
+  // species arrived in the pile three times, so a patch of one photograph
+  // reported three photographs and a pin covering nineteen called itself 114.
+  // render() has already decided what a find is; this only decides which finds
+  // collide on screen.
   const groups = [];
   mapped.forEach(u => {
     const p = map.project(llOf(u.anchor), z);
     const g = groups.find(g => g.p.distanceTo(p) < MERGE_PX);
-    // `finds` is what the badge counts; `items` stays the photographs behind them,
-    // which is what the popup drills into.
-    if (g) { g.items.push(...u.items); g.finds += 1; }
-    else groups.push({ p, items: [...u.items], finds: 1 });
+    if (g) g.units.push(u);
+    else groups.push({ p, units: [u] });
   });
 
   groups.forEach(g => {
-    const o = g.items[0], s = SP[shownAs(o, SHOWN_FOR)] || SP.unknown;
+    const o = g.units[0].anchor, s = SP[g.units[0].species_id] || SP.unknown;
     // A mixed pin takes the colour of its most urgent member — a regulated find
-    // must not be hidden behind a native one it happens to sit next to.
-    const worst = g.items.map(x => statusOf(SP[shownAs(x, SHOWN_FOR)] || SP.unknown))
+    // must not be hidden behind a native one it happens to sit next to. The
+    // find's own species, not its photograph's subject: with no filter running
+    // there is nothing to match a background identification against, so a pin
+    // whose only regulated record was identified behind something else was drawn
+    // in that something else's colour.
+    const worst = g.units.map(u => statusOf(SP[u.species_id] || SP.unknown))
       .sort((a, b) => ORDER.indexOf(a) - ORDER.indexOf(b))[0];
+    const unver = g.units.some(u => u.items.some(x => !x.is_verified));
     const icon = L.divIcon({
       className: "", iconSize: [44, 44], iconAnchor: [22, 22], popupAnchor: [0, -20],
-      html: `<div class="mk-wrap"><div class="mk s-${worst}${g.items.some(x => !x.is_verified) ? " unver" : ""}">`
+      html: `<div class="mk-wrap"><div class="mk s-${worst}${unver ? " unver" : ""}">`
           + `<img src="${esc(thumbSrc(o))}" alt="${esc(s.common)}" loading="lazy">`
-          + `</div>${g.finds > 1 ? `<span class="cnt">${g.finds}</span>` : ""}</div>`,
+          + `</div>${g.units.length > 1 ? `<span class="cnt">${g.units.length}</span>` : ""}</div>`,
     });
-    const gid = String(PIN.push(g.items) - 1);   // popups look their group up by index
+    const gid = String(PIN.push(g.units) - 1);   // popups look their group up by index
     const mk = L.marker(llOf(o), { icon, title: s.common, alt: s.common, keyboard: true })
       .addTo(markers)
       .bindPopup(popupHTML(gid), { closeButton: false, autoPanPadding: [24, 24],
@@ -940,23 +983,36 @@ function drawMarkers() {
 let PIN = [];
 let openPopup = null;
 
+// The finds a pin holds — as render() built them, not re-derived. A row in the
+// list, the detail that row opens, and the number on the pin all have to agree
+// about what is at this spot, and the only way they can is by reading the same
+// list. Every version of this that recomputed the finds got a different answer
+// somewhere: `pinList` recomputed them without the filter, so the way back from a
+// detail could list a different set of finds from the one you clicked in.
+//
+// A pin can hold several finds, and each find several photographs. The list is of
+// FINDS — otherwise a patch photographed seven times reads as seven records
+// sitting on top of each other, which is what the pin grouping just stopped.
+const pinUnits = gid => PIN[gid] || [];
+
 function popupHTML(gid) {
-  const items = PIN[gid] || [];
-  // A pin can hold several finds, and each find several photographs. The list is
-  // of FINDS — otherwise a patch photographed seven times reads as seven records
-  // sitting on top of each other, which is what the pin grouping just stopped.
-  const units = byOccurrence(items, SHOWN_FOR);
-  if (units.length > 1) return listHTML(gid, units);
-  return detailHTML(gid, items.indexOf(units[0].anchor), units[0].items.length);
+  const units = pinUnits(gid);
+  if (!units.length) return `<div class="pop"><div class="pb">Not found.</div></div>`;
+  return units.length > 1 ? listHTML(gid, units) : detailHTML(gid, 0);
 }
 
 // Inline handlers stop propagation: a click reaching the map triggers Leaflet's
 // closeOnClick, which would dismiss the popup instead of drilling into the record.
+//
+// Rows are addressed by their position in THIS list — by find, never by
+// photograph. One photograph is one find of every species it evidences: the frame
+// at 44.4555,-68.8816 is a find of St John's Wort, of jewelweed and of smooth
+// bedstraw at once. Addressing a row by its photograph gave all three rows the
+// same address, so every row in that pin opened St John's Wort.
 function listHTML(gid, units) {
-  const all = PIN[gid] || [];
-  const rows = units.map(u => {
-    const o = u.anchor, s = SP[u.species_id || spOf(o)] || SP.unknown, n = u.items.length;
-    return `<button class="pop-row" onclick="event.stopPropagation();pinShow('${gid}',${all.indexOf(o)},${n})">
+  const rows = units.map((u, i) => {
+    const o = u.anchor, s = SP[u.species_id] || SP.unknown, n = u.items.length;
+    return `<button class="pop-row" onclick="event.stopPropagation();pinShow('${gid}',${i})">
       <img src="${esc(thumbSrc(o))}" alt="">
       <span class="rt">
         <span class="rn">${esc(s.common)}${n > 1 ? ` <span class="rn-n">${n} photos</span>` : ""}</span>
@@ -966,10 +1022,13 @@ function listHTML(gid, units) {
         <span class="rm">${vBadge(o)}</span>
       </span></button>`;
   }).join("");
-  const finds = units.length, photos = units.reduce((t, u) => t + u.items.length, 0);
+  // DISTINCT photographs — Survey.tally, the same rule as the line above the map.
+  // Summing each find's photographs counts one frame once per plant in it, and
+  // the frames in a pin are shared: this pin's "10 photographs" were four.
+  const finds = units.length, photos = Survey.tally(units).photographs;
   return `<div class="pop">
     <div class="pop-hd">${finds} find${finds === 1 ? "" : "s"} at this spot${
-      photos > finds ? ` · ${photos} photographs` : ""}</div>
+      photos !== finds ? ` · ${photos} photograph${photos === 1 ? "" : "s"}` : ""}</div>
     <div class="pop-list">${rows}</div></div>`;
 }
 
@@ -979,12 +1038,17 @@ function listHTML(gid, units) {
 // photograph whose subject is St John's Wort, and the "Full details" button read
 // past `s` to the subject, so it opened St John's Wort under a heading saying
 // Smooth Bedstraw.
-function detailHTML(gid, idx, n = 1) {
-  const items = PIN[gid] || [];
-  const o = items[idx];
-  if (!o) return `<div class="pop"><div class="pb">Not found.</div></div>`;
-  const s = SP[shownAs(o, SHOWN_FOR)] || SP.unknown;
-  const finds = byOccurrence(items, SHOWN_FOR).length;
+//
+// `idx` is a find in `pinUnits(gid)`, and the find carries the species it is a
+// find OF. Deriving that species from the photograph instead cannot work: one
+// photograph is several finds, and with no filter running there is nothing to
+// resolve it against but the subject.
+function detailHTML(gid, idx) {
+  const units = pinUnits(gid);
+  const u = units[idx];
+  if (!u) return `<div class="pop"><div class="pb">Not found.</div></div>`;
+  const o = u.anchor, s = SP[u.species_id] || SP.unknown, n = u.items.length;
+  const finds = units.length;
   const back = finds > 1
     ? `<button class="pop-back" onclick="event.stopPropagation();pinList('${gid}')">&larr; All ${finds} finds here</button>` : "";
   return `<div class="pop">
@@ -1013,8 +1077,8 @@ function setPopup(html) {
   openPopup.setContent(html);
   openPopup.update();
 }
-function pinShow(gid, idx, n = 1) { setPopup(detailHTML(gid, idx, n)); }
-function pinList(gid) { setPopup(listHTML(gid, byOccurrence(PIN[gid] || []))); }
+function pinShow(gid, idx) { setPopup(detailHTML(gid, idx)); }
+function pinList(gid) { setPopup(listHTML(gid, pinUnits(gid))); }
 
 // ---- contributor mode ----------------------------------------------------
 // The site stays static. Everything below talks to a Cloudflare Worker that does

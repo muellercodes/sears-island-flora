@@ -60,12 +60,13 @@ describe("which species a photograph counts towards", () => {
     // made "Invasive" show nothing at all, hiding the only record there is.
     const o = photo("a.jpg", "rubus", { also: ["smooth-bedstraw"] });
     assert.ok(S.evidences(o, setOf("smooth-bedstraw")));
-    assert.equal(S.shownAs(o, setOf("smooth-bedstraw")), "smooth-bedstraw");
-  });
-
-  test("with no filter, a photograph is shown as its own subject", () => {
-    const o = photo("a.jpg", "rubus", { also: ["smooth-bedstraw"] });
-    assert.equal(S.shownAs(o, null), "rubus");
+    // And the find it produces is labelled as the bedstraw, not as the rubus the
+    // photograph is OF. That labelling is byOccurrence's job and nothing else's:
+    // a second answer to the same question is how every find in a map pin came
+    // to open the photograph's subject instead of itself.
+    const units = S.byOccurrence([o], setOf("smooth-bedstraw"),
+      S.indexOccurrences([occ("smooth-bedstraw", ["a.jpg"])]));
+    assert.deepEqual(units.map(u => u.species_id), ["smooth-bedstraw"]);
   });
 
   test("a photograph evidencing nothing in the filter is excluded", () => {
@@ -101,6 +102,19 @@ describe("photographs collapsing into finds", () => {
     assert.equal(units.length, 2);
     assert.deepEqual(units.map(u => u.species_id).sort(),
                      ["broadleaf-plantain", "dandelion"]);
+  });
+
+  test("with no filter, a frame is a find of everything in it, each as itself", () => {
+    // The case behind the map bug: no filter running, one frame, three finds.
+    // Whatever labels them cannot ask the photograph, which knows only its
+    // subject and would answer St John's Wort three times.
+    const o = photo("a.jpg", "st-johns-wort",
+                    { also: ["jewelweed", "smooth-bedstraw"] });
+    const units = S.byOccurrence([o], null,
+      index(occ("st-johns-wort", ["a.jpg"]), occ("jewelweed", ["a.jpg"]),
+            occ("smooth-bedstraw", ["a.jpg"])));
+    assert.deepEqual(units.map(u => u.species_id).sort(),
+                     ["jewelweed", "smooth-bedstraw", "st-johns-wort"]);
   });
 
   test("...but only the species the filter asked for", () => {
@@ -223,8 +237,12 @@ describe("the published page itself", () => {
 
   test("the page loads the shared rules rather than copying them", () => {
     assert.match(html, /<script src="app\/survey\.js"><\/script>/);
-    for (const fn of ["byOccurrence", "shownAs", "tally", "locationCounts"]) {
-      assert.ok(script.includes(`Survey.${fn}`),
+    // Comments stripped first: this asks what the page CALLS, and a rule named
+    // in a comment explaining why the page no longer needs it would otherwise
+    // satisfy the test on its own.
+    const code = script.replace(/\/\/[^\n]*/g, "").replace(/\/\*[\s\S]*?\*\//g, "");
+    for (const fn of ["byOccurrence", "evidences", "tally", "locationCounts"]) {
+      assert.ok(code.includes(`Survey.${fn}`),
                 `index.html should call Survey.${fn}, not reimplement it`);
     }
   });
