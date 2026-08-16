@@ -41,18 +41,6 @@ const Survey = {
   },
 
   /**
-   * Which species a photograph is being SHOWN FOR. Usually its subject, but
-   * under a filter it is whichever matching species the frame evidences: a photo
-   * of rubus that also caught smooth-bedstraw is, when filtering to invasives, a
-   * record of the bedstraw. Labelling it rubus hid the only record of the
-   * survey's one invasive species.
-   */
-  shownAs(o, ok) {
-    if (!ok) return Survey.spOf(o);
-    return Survey.speciesIn(o).find((s) => ok.has(s)) || Survey.spOf(o);
-  },
-
-  /**
    * Index occurrences by "<species>|<file>", so a photograph can be looked up
    * under each species it evidences — it belongs to a different patch of each.
    */
@@ -73,6 +61,13 @@ const Survey = {
    * Crediting only the first lost a find whenever one frame caught two species
    * of the same status — plantain and dandelion share a frame here, and the map
    * drew 9 introduced locations where the data holds 10.
+   *
+   * `species_id` on the unit is the species it is a find OF, which is not always
+   * the photograph's subject: a frame of St John's Wort that also caught smooth
+   * bedstraw is a find of each, and the bedstraw one is the only record of the
+   * survey's one invasive there is. Nothing downstream may re-derive that from
+   * the photograph — this is the only place it is decided, and the map's popups
+   * read it rather than working it out again.
    */
   byOccurrence(records, ok, occIndex) {
     const seen = new Map();

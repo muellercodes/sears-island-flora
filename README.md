@@ -1037,18 +1037,32 @@ So the page's rules moved into `app/survey.js` — no DOM, no globals, everythin
 passed in — which the page loads and `tests/app.test.mjs` exercises directly.
 Both use that one file, so they cannot drift.
 
+Which left one gap, and a bug walked straight through it: **every find in a merged
+map pin opened the same record.** Clicking "Smooth Bedstraw" opened St John's Wort,
+and so did clicking Jewelweed. Every rule in `survey.js` was right; the wiring
+between the popup's list and the record it opened was wrong, and no test over pure
+functions can see a wiring bug. So `tests/page.test.mjs` loads the page's real
+inline script into a `vm` with a fake DOM and a Leaflet stub, and then *clicks
+things*: it runs the `onclick` the page wrote and reads back what opened.
+
 The third suite is the one that matters most. **A green suite proves nothing until
 you have watched it fail**, so `mutation_check.py` reintroduces each of those bugs
 in turn and requires the suite to go red:
 
 ```
-  ok   a background-only species is invisible to its own filter
+  ok   a find is labelled with its photograph's subject, not what it is a find of
   ok   one frame showing two species counts as one find
   ok   a chip counts species rather than locations
   ok   'Full details' opens the photograph's subject, not the find
   ok   an empty filter paints over the map instead of tearing it down
   ok   waiting for a paint hangs forever in a backgrounded tab
   ok   a backtick in an HTML comment silently breaks the whole page
+  ok   every find in a merged pin opens the same record
+  ok   a pin flattens its finds back into loose photographs
+  ok   a popup counts one photograph once per plant in it
+  ok   a map built before layout can never re-measure its container
+  ok   the map paints over the page instead of staying inside its own box
+  ok   a pinned header and a full-height map claim the same screen
 ```
 
 That last one is why the site suite parses the page at all: a stray backtick
@@ -1056,9 +1070,14 @@ inside a template literal terminated the string and broke every script on the
 page — no filters, no map, no contributor mode — while the file stayed valid HTML
 and all 149 Python tests went on passing.
 
-**What none of them cover is layout.** A CSS collision that lays a checklist out
-in columns, or a popup falling off the bottom of a phone, still needs a browser
-and a person looking at it.
+**What none of them really cover is layout.** Two rules are held by name in
+`page.test.mjs` — the map has to establish its own stacking context, and the
+header must not be pinned — because between them they are why the map used to
+slide over the title and the filters as you scrolled, and each is a single
+declaration somebody will delete as noise one day. That is assertion about CSS
+text, not about what a browser draws. A collision that lays a checklist out in
+columns, or a popup falling off the bottom of a phone, still needs a browser and a
+person looking at it.
 
 What they cover is deliberately narrow: **the judgment calls, not the plumbing.**
 Each rule below encodes a decision that reads as arbitrary to whoever edits it next,
@@ -1073,6 +1092,7 @@ and would break silently.
 | `test_data_integrity` | Reads the committed data: the reference list and catalogue agree, nothing published is missing a location or date, no verification field is incomplete |
 | `test_site_assets` | That the published page is complete — a script the page loads but `publish` never copies 404s in the browser and takes the whole app with it, failing nothing else |
 | `app.test.mjs` | The rules the page runs on: which species a photograph counts towards, what the numbers mean, and whether the page parses |
+| `page.test.mjs` | The page itself, driven: that clicking a find in a map pin opens *that* find, that the numbers in a popup match the survey, and that a map measured before layout still recovers |
 | `test_contributor_inbox` | Who may write what — including that the unattended token cannot manufacture a field check, and that `worker/index.js` has not drifted from the table here. What a surplus mark may destroy: never the only record of another species in the frame |
 
 Writing these found a real hole: the hedge-word check ran *after* parentheticals
