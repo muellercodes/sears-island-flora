@@ -289,7 +289,19 @@
         box-shadow:0 0 0 2px var(--panel), 0 3px 8px rgba(0,0,0,.35); background:var(--panel);
         cursor:pointer; transition:transform .12s ease; }
   .leaflet-marker-icon:hover .mk { transform:scale(1.1); }
-  .mk img { width:100%; height:100%; object-fit:cover; display:block; }
+  /* Three classes deep on purpose, and the depth is the whole rule. Leaflet ships
+     `.leaflet-container .leaflet-marker-pane img { width:auto }` — two classes and
+     an element, and its stylesheet is injected at runtime so it lands after this
+     block. A plain `.mk img` is one class and an element and loses, which left
+     every marker sized by its photograph's own proportions inside a 38px circle:
+     a portrait shot drew 21px wide with the panel showing through beside it as a
+     black band, and a landscape one drew 51px and had its right-hand third cut
+     off by the circle. Neither ever reached `object-fit`, which cannot do
+     anything until the element is the size of the box it is meant to cover.
+     Matching Leaflet's specificity is not enough — a tie goes to whoever loaded
+     last, which is Leaflet — so this has to outrank it outright. */
+  .leaflet-marker-pane .mk-wrap .mk img { width:100%; height:100%;
+    object-fit:cover; display:block; }
   .mk.s-regulated{border-color:var(--toxic)} .mk.s-invasive{border-color:var(--caution)}
   .mk.s-introduced{border-color:var(--med)} .mk.s-native{border-color:var(--edible)}
   .mk-wrap { position:relative; width:44px; height:44px; }

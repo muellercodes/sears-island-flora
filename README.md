@@ -1063,6 +1063,7 @@ in turn and requires the suite to go red:
   ok   a map built before layout can never re-measure its container
   ok   the map paints over the page instead of staying inside its own box
   ok   a pinned header and a full-height map claim the same screen
+  ok   a marker thumbnail loses to Leaflet's own rule for images in the map
 ```
 
 That last one is why the site suite parses the page at all: a stray backtick
@@ -1070,14 +1071,17 @@ inside a template literal terminated the string and broke every script on the
 page — no filters, no map, no contributor mode — while the file stayed valid HTML
 and all 149 Python tests went on passing.
 
-**What none of them really cover is layout.** Two rules are held by name in
-`page.test.mjs` — the map has to establish its own stacking context, and the
-header must not be pinned — because between them they are why the map used to
-slide over the title and the filters as you scrolled, and each is a single
-declaration somebody will delete as noise one day. That is assertion about CSS
-text, not about what a browser draws. A collision that lays a checklist out in
-columns, or a popup falling off the bottom of a phone, still needs a browser and a
-person looking at it.
+**What none of them really cover is layout.** Three rules are held by name in
+`page.test.mjs`, each a single declaration somebody will one day delete as noise:
+the map has to establish its own stacking context and the header must not be
+pinned — between them, why the map used to slide over the title and the filters as
+you scrolled — and the marker thumbnail's rule has to outrank Leaflet's own
+`width:auto` for images in the map, or every pin is sized by its photograph
+instead of by the pin. Leaflet's stylesheet is injected at runtime and so lands
+last, which means for anything both style, the page has to win on specificity; a
+tie loses. That is assertion about CSS text, not about what a browser draws. A
+collision that lays a checklist out in columns, or a popup falling off the bottom
+of a phone, still needs a browser and a person looking at it.
 
 What they cover is deliberately narrow: **the judgment calls, not the plumbing.**
 Each rule below encodes a decision that reads as arbitrary to whoever edits it next,

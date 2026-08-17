@@ -111,6 +111,14 @@ MUTATIONS = [
      "a pinned header and a full-height map claim the same screen",
      "  header { background:var(--bg);",
      "  header { position:sticky; top:0; z-index:20; background:var(--bg);"),
+
+    ("index.html",
+     # Leaflet's `width:auto` then wins and the pin is sized by its photograph:
+     # portraits letterboxed in black, landscapes cut off at the circle's edge.
+     "a marker thumbnail loses to Leaflet's own rule for images in the map",
+     "  .leaflet-marker-pane .mk-wrap .mk img { width:100%; height:100%;\n"
+     "    object-fit:cover; display:block; }",
+     "  .mk img { width:100%; height:100%; object-fit:cover; display:block; }"),
 ]
 
 

@@ -376,11 +376,40 @@ describe("a map built before the browser has laid it out", () => {
 });
 
 // --- layout ------------------------------------------------------------------
-// What a vm cannot do is lay anything out, so these read the stylesheet. Both
-// are single rules that were changed once and broke the page for everyone.
+// What a vm cannot do is lay anything out, so these read the stylesheet. Each is
+// a single rule that was changed once and broke the page for everyone.
+
+// Comments stripped, and not as tidiness: the comments in this stylesheet quote
+// the very selectors the tests below reason about, and an earlier version of the
+// marker test counted the class names in a comment towards the specificity of the
+// rule underneath it. It passed against code that was broken.
+const CSS = HTML.slice(HTML.indexOf("<style>"), HTML.indexOf("</style>"))
+                .replace(/\/\*[\s\S]*?\*\//g, "\n");
+
+/**
+ * CSS specificity as [ids, classes, elements], compared lexicographically.
+ *
+ * The page's own <style> block is in the document head; Leaflet's stylesheet is
+ * injected at runtime and therefore lands after it. So for anything both of them
+ * style, the page has to WIN ON SPECIFICITY — a tie goes to whoever loaded last,
+ * which is always Leaflet. That is not a general fact about CSS worth a helper;
+ * it is the specific trap this page keeps falling into, twice now.
+ */
+function specificity(sel) {
+  const s = sel.trim();
+  const ids = (s.match(/#[\w-]+/g) || []).length;
+  const classes = (s.match(/\.[\w-]+|\[[^\]]*\]|:(?!:)[\w-]+/g) || []).length;
+  const elements = (s.replace(/[#.][\w-]+|\[[^\]]*\]|::?[\w-]+/g, " ")
+                     .match(/[A-Za-z][\w-]*/g) || []).length;
+  return [ids, classes, elements];
+}
+const beats = (a, b) => {
+  const x = specificity(a), y = specificity(b);
+  return x[0] !== y[0] ? x[0] > y[0] : x[1] !== y[1] ? x[1] > y[1] : x[2] > y[2];
+};
 
 describe("nothing is laid over anything else", () => {
-  const css = HTML.slice(HTML.indexOf("<style>"), HTML.indexOf("</style>"));
+  const css = CSS;
   const rule = sel => {
     const m = css.match(new RegExp(`(^|\\n)\\s*${sel}\\s*\\{([^}]*)\\}`));
     return m ? m[2] : null;
@@ -405,5 +434,48 @@ describe("nothing is laid over anything else", () => {
     assert.ok(header, "the header has no rule any more");
     assert.doesNotMatch(header, /position\s*:\s*(sticky|fixed)/,
       "a pinned header overlaps the map it sits above");
+  });
+});
+
+describe("a marker shows the whole photograph", () => {
+  // Leaflet 1.9.4, verbatim — the page pins that version in LEAFLET. Its
+  // stylesheet loads after the page's own, so anything it styles that the page
+  // also styles is Leaflet's unless the page outranks it.
+  const LEAFLET_IMG = ".leaflet-container .leaflet-marker-pane img";
+
+  test("the specificity helper agrees about the rule that lost", () => {
+    // `.mk img` is what the page had. Stating it here is what makes the test
+    // below mean something: it is not that a longer selector is nicer, it is
+    // that the short one provably loses.
+    assert.equal(beats(".mk img", LEAFLET_IMG), false);
+    assert.equal(beats(".a .b .c img", LEAFLET_IMG), true);
+    assert.equal(beats(".leaflet-marker-pane img", LEAFLET_IMG), false,
+      "matching Leaflet's specificity is a tie, and a tie loses to load order");
+  });
+
+  test("REGRESSION: the thumbnail fills its pin instead of being cut off", () => {
+    // Leaflet sets `width:auto` on every image in the marker pane, which beat the
+    // page's `.mk img` and left each marker sized by its photograph's own
+    // proportions inside a 38px circle: a 562x1000 portrait drew 21px wide with a
+    // black band beside it, a 1000x750 landscape drew 51px and lost its right
+    // third to the circle's edge. `object-fit:cover` was in the rule the whole
+    // time and could do nothing, because it only crops an element that is already
+    // the size of its box.
+    // Anchored at the end of the previous rule, so the capture is the selector
+    // and nothing but the selector.
+    const rules = [...CSS.matchAll(/(?:^|})\s*([^{}]*\.mk\s+img)\s*\{([^}]*)\}/g)];
+    assert.ok(rules.length, "nothing styles the marker thumbnail any more");
+
+    const sizing = rules.filter(([, , body]) => /width\s*:\s*100%/.test(body));
+    assert.equal(sizing.length, 1,
+      "exactly one rule should size the marker thumbnail");
+
+    const [, selector, body] = sizing[0];
+    assert.ok(beats(selector, LEAFLET_IMG),
+      `"${selector.trim()}" does not outrank Leaflet's "${LEAFLET_IMG}", so the `
+      + "marker is sized by the photograph rather than by the pin");
+    assert.match(body, /height\s*:\s*100%/, "the thumbnail must fill the pin");
+    assert.match(body, /object-fit\s*:\s*cover/,
+      "without cover the photograph is stretched to fit the circle");
   });
 });
